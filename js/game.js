@@ -4,6 +4,10 @@
 // AI module functions are now directly included here
 // For more modular development with ES modules, use a local server
 
+// Matter.js setup
+const Matter = window.Matter;
+const { Engine, World, Bodies, Body, Composite, Vector, Events } = Matter;
+
 // Game state
 let gameState = 'setup';
 let twoPlayerMode = false;
@@ -11,7 +15,7 @@ let paddleData1 = [];
 let paddleData2 = [];
 let gameSettings = {
 	ballSpeed: 2,
-	paddleScale: 3,
+	paddleScale: 5, // 5 is now the default (1x)
 	winScore: 11,
 	speedIncrease: true,
 	aiDifficulty: 5,
@@ -39,6 +43,13 @@ let gameData = {
 		timeSinceLastMove: 0
 	}
 };
+
+// Matter.js variables
+let engine;
+let ballBody;
+let player1Bodies = [];
+let player2Bodies = [];
+let lastTime = 0;
 
 // Initialize paddle grids
 function initializePaddleGrids() {
@@ -322,19 +333,19 @@ function clearGrid(playerNum) {
 
 function updateSettings() {
 	gameSettings.ballSpeed = parseFloat(document.getElementById('ballSpeed').value);
-	gameSettings.paddleScale = parseInt(document.getElementById('paddleScale').value);
+	// Slider value: 0.5-3, but actual scale: value * 5
+	const sliderValue = parseFloat(document.getElementById('paddleScale').value);
+	gameSettings.paddleScale = sliderValue * 5;
 	gameSettings.winScore = parseInt(document.getElementById('winScore').value);
 	gameSettings.speedIncrease = document.getElementById('speedIncrease').checked;
 	gameSettings.aiDifficulty = parseInt(document.getElementById('aiDifficulty').value);
 	gameSettings.player1Color = document.getElementById('player1Color').value;
 	gameSettings.player2Color = document.getElementById('player2Color').value;
 	document.getElementById('ballSpeedValue').textContent = gameSettings.ballSpeed;
-	document.getElementById('paddleScaleValue').textContent = gameSettings.paddleScale + 'x';
-	
+	document.getElementById('paddleScaleValue').textContent = sliderValue + 'x';
 	// Use AI module function to get difficulty name
 	const difficultyName = getAIDifficultyName(gameSettings.aiDifficulty);
 	document.getElementById('aiDifficultyValue').textContent = gameSettings.aiDifficulty + ' - ' + difficultyName;
-	
 	// Update paddle grid colors
 	updateGridDisplay();
 }
@@ -354,18 +365,106 @@ function startGame(twoPlayer) {
 	document.getElementById('gameContainer').classList.remove('hidden');
 	document.getElementById('gameMode').textContent = twoPlayer ? '2 Player' : '1 Player vs AI';
 	document.getElementById('targetScore').textContent = gameSettings.winScore;
+
+	// Create Matter.js engine
+	engine = Engine.create();
+	engine.world.gravity.y = 0;
+	// Increase constraint and position iterations for more accurate collisions
+	engine.positionIterations = 12;
+	engine.constraintIterations = 12;
+
+	// Ball radius
+	const ballRadius = gameData.ball.size / 2;
+	const canvasWidth = 900;
+	const canvasHeight = 500;
+	// Place walls at the visible edge so the ball always bounces at the edge
+	// Top wall at y=ballRadius, bottom wall at y=canvasHeight - ballRadius, thickness=ball.size
+	// Move top wall higher and bottom wall lower for perfect alignment
+	const topWall = Bodies.rectangle(canvasWidth / 2, 0 - gameData.ball.size / 2, canvasWidth, gameData.ball.size, {
+		isStatic: true,
+		restitution: 1,
+		friction: 0,
+		frictionStatic: 0,
+		frictionAir: 0
+	});
+	const bottomWall = Bodies.rectangle(canvasWidth / 2, canvasHeight + gameData.ball.size / 2, canvasWidth, gameData.ball.size, {
+		isStatic: true,
+		restitution: 1,
+		friction: 0,
+		frictionStatic: 0,
+		frictionAir: 0
+	});
+	World.add(engine.world, [topWall, bottomWall]);
+
+	// Create ball
+	ballBody = Bodies.circle(450, 250, ballRadius, {
+		restitution: 1,
+		friction: 0,
+		frictionStatic: 0,
+		frictionAir: 0
+	});
+	World.add(engine.world, ballBody);
+
+	// Create paddle bodies
+	const paddleBodyOptions = {
+		isStatic: false, // dynamic
+		restitution: 1,
+		friction: 0,
+		frictionStatic: 0,
+		frictionAir: 0,
+		mass: 1000 // very heavy
+	};
+	player1Bodies = [];
+	for (let py = 0; py < 16; py++) {
+		for (let px = 0; px < 16; px++) {
+			if (paddleData1[py][px]) {
+				const x = gameData.player1.x + px * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				const y = gameData.player1.y + py * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				const rect = Bodies.rectangle(x, y, gameSettings.paddleScale, gameSettings.paddleScale, paddleBodyOptions);
+				player1Bodies.push(rect);
+				World.add(engine.world, rect);
+			}
+		}
+	}
+	player2Bodies = [];
+	for (let py = 0; py < 16; py++) {
+		for (let px = 0; px < 16; px++) {
+			if (paddleData2[py][px]) {
+				const x = gameData.player2.x + px * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				const y = gameData.player2.y + py * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				const rect = Bodies.rectangle(x, y, gameSettings.paddleScale, gameSettings.paddleScale, paddleBodyOptions);
+				player2Bodies.push(rect);
+				World.add(engine.world, rect);
+			}
+		}
+	}
+
+	// Add collision event for rallies
+	Events.on(engine, 'collisionStart', (event) => {
+		event.pairs.forEach(pair => {
+			const bodies = [pair.bodyA, pair.bodyB];
+			if (bodies.includes(ballBody)) {
+				const other = bodies.find(b => b !== ballBody);
+				if (player1Bodies.includes(other) || player2Bodies.includes(other)) {
+					gameData.rallies++;
+					if (gameSettings.speedIncrease && gameData.rallies % 5 === 0) {
+						const speed = Vector.magnitude(ballBody.velocity);
+						const newSpeed = Math.min(speed + 0.1 * gameData.ball.baseSpeed, gameData.ball.baseSpeed * 2.5);
+						Body.setVelocity(ballBody, Vector.mult(Vector.normalise(ballBody.velocity), newSpeed));
+						updateSpeedDisplay();
+					}
+				}
+			}
+		});
+	});
+
 	resetGame();
+	lastTime = performance.now();
 	gameLoop();
 }
 
 function resetGame() {
 	const baseSpeed = gameSettings.ballSpeed;
-	gameData.ball = { 
-		x: 450, y: 250, 
-		vx: baseSpeed, vy: baseSpeed * 0.7, 
-		size: 12, 
-		baseSpeed: baseSpeed 
-	};
 	gameData.player1 = { x: 50, y: 200, vx: 0, vy: 0, score: gameData.player1.score };
 	gameData.player2 = { x: 650, y: 200, vx: 0, vy: 0, score: gameData.player2.score };
 	gameData.speedMultiplier = 1;
@@ -377,9 +476,11 @@ function resetGame() {
 		aggressiveness: 0.5,
 		timeSinceLastMove: 0
 	};
-	// Randomize ball direction
-	gameData.ball.vx = Math.random() > 0.5 ? baseSpeed : -baseSpeed;
-	gameData.ball.vy = (Math.random() - 0.5) * baseSpeed;
+	// Set ball position and velocity
+	Body.setPosition(ballBody, { x: 450, y: 250 });
+	let vx = Math.random() > 0.5 ? baseSpeed : -baseSpeed;
+	let vy = (Math.random() - 0.5) * baseSpeed;
+	Body.setVelocity(ballBody, { x: vx, y: vy });
 	updateSpeedDisplay();
 }
 
@@ -437,273 +538,201 @@ function handleInput() {
 function updatePaddles() {
 	const paddleSize = 16 * gameSettings.paddleScale;
 	const canvasWidth = 900;
+	const canvasHeight = 500;
 	const sectionWidth = canvasWidth / 3; // 300px per section
-	// Update player 1 position with bounds
-	gameData.player1.x += gameData.player1.vx;
-	gameData.player1.y += gameData.player1.vy;
-	// Constrain player 1 to left third (0-300px minus paddle size)
-	gameData.player1.x = Math.max(10, Math.min(sectionWidth - paddleSize - 10, gameData.player1.x));
-	gameData.player1.y = Math.max(10, Math.min(500 - paddleSize - 10, gameData.player1.y));
-	// Update player 2 position with bounds
-	gameData.player2.x += gameData.player2.vx;
-	gameData.player2.y += gameData.player2.vy;
-	// Constrain player 2 to right third (600-900px)
-	gameData.player2.x = Math.max(sectionWidth * 2 + 10, Math.min(canvasWidth - paddleSize - 10, gameData.player2.x));
-	gameData.player2.y = Math.max(10, Math.min(500 - paddleSize - 10, gameData.player2.y));
-}
 
-function checkPaddleCollision(player) {
-	const ball = gameData.ball;
-	const paddle = gameData[player];
-	const paddleSize = 16 * gameSettings.paddleScale;
-	const paddleData = player === 'player1' ? paddleData1 : paddleData2;
-	if (ball.x + ball.size < paddle.x || ball.x > paddle.x + paddleSize ||
-		ball.y + ball.size < paddle.y || ball.y > paddle.y + paddleSize) {
-		return false;
+	// Helper to check if a paddle's active pixels would be out of bounds or inside the fence
+	function isPaddlePositionValid(x, y, playerNum) {
+		const paddleData = playerNum === 1 ? paddleData1 : paddleData2;
+		for (let py = 0; py < 16; py++) {
+			for (let px = 0; px < 16; px++) {
+				if (!paddleData[py][px]) continue;
+				const pixelX = x + px * gameSettings.paddleScale;
+				const pixelY = y + py * gameSettings.paddleScale;
+				// Top/bottom wall check (no margin)
+				if (pixelY < 0 || pixelY + gameSettings.paddleScale > canvasHeight) return false;
+				// Left/right wall check (keep margin for left/right)
+				if (pixelX < 10 || pixelX + gameSettings.paddleScale > canvasWidth - 10) return false;
+				// Center fence check (block if any part touches or crosses the fence)
+				if (playerNum === 1) {
+					// Player 1: right edge of pixel must be < 300 (cannot touch or cross 300)
+					if (pixelX + gameSettings.paddleScale > 300) return false;
+				} else {
+					// Player 2: left edge of pixel must be >= 600 (cannot touch or cross 600)
+					if (pixelX < 600) return false;
+				}
+			}
+		}
+		return true;
 	}
-	const ballCenterX = ball.x + ball.size / 2;
-	const ballCenterY = ball.y + ball.size / 2;
-	const ballRadius = ball.size / 2;
-	let collisions = [];
+
+	// --- Player 1 (left) ---
+	let tryX1 = gameData.player1.x + gameData.player1.vx;
+	let tryY1 = gameData.player1.y + gameData.player1.vy;
+	// Only allow move if all active pixels remain on correct side of fence and in bounds
+	let validMove1 = true;
+	for (let py = 0; py < 16 && validMove1; py++) {
+		for (let px = 0; px < 16 && validMove1; px++) {
+			if (!paddleData1[py][px]) continue;
+			let pixelX = tryX1 + px * gameSettings.paddleScale;
+			let pixelY = tryY1 + py * gameSettings.paddleScale;
+			if (pixelX + gameSettings.paddleScale >= 300 || pixelX < 10 || pixelY < 0 || pixelY + gameSettings.paddleScale > 500) {
+				validMove1 = false;
+			}
+		}
+	}
+	if (validMove1) {
+		gameData.player1.x = tryX1;
+		gameData.player1.y = tryY1;
+	} else {
+		// Try moving only in x
+		let tryX1x = gameData.player1.x + gameData.player1.vx;
+		let tryY1x = gameData.player1.y;
+		let validMove1x = true;
+		for (let py = 0; py < 16 && validMove1x; py++) {
+			for (let px = 0; px < 16 && validMove1x; px++) {
+				if (!paddleData1[py][px]) continue;
+				let pixelX = tryX1x + px * gameSettings.paddleScale;
+				let pixelY = tryY1x + py * gameSettings.paddleScale;
+				if (pixelX + gameSettings.paddleScale >= 300 || pixelX < 10 || pixelY < 0 || pixelY + gameSettings.paddleScale > 500) {
+					validMove1x = false;
+				}
+			}
+		}
+		if (validMove1x) gameData.player1.x = tryX1x;
+		// Try moving only in y
+		let tryX1y = gameData.player1.x;
+		let tryY1y = gameData.player1.y + gameData.player1.vy;
+		let validMove1y = true;
+		for (let py = 0; py < 16 && validMove1y; py++) {
+			for (let px = 0; px < 16 && validMove1y; px++) {
+				if (!paddleData1[py][px]) continue;
+				let pixelX = tryX1y + px * gameSettings.paddleScale;
+				let pixelY = tryY1y + py * gameSettings.paddleScale;
+				if (pixelX + gameSettings.paddleScale >= 300 || pixelX < 10 || pixelY < 0 || pixelY + gameSettings.paddleScale > 500) {
+					validMove1y = false;
+				}
+			}
+		}
+		if (validMove1y) gameData.player1.y = tryY1y;
+	}
+
+	// --- Player 2 (right) ---
+	let tryX2 = gameData.player2.x + gameData.player2.vx;
+	let tryY2 = gameData.player2.y + gameData.player2.vy;
+	let validMove2 = true;
+	for (let py = 0; py < 16 && validMove2; py++) {
+		for (let px = 0; px < 16 && validMove2; px++) {
+			if (!paddleData2[py][px]) continue;
+			let pixelX = tryX2 + px * gameSettings.paddleScale;
+			let pixelY = tryY2 + py * gameSettings.paddleScale;
+			if (pixelX < 600 || pixelX + gameSettings.paddleScale > 900 - 10 || pixelY < 0 || pixelY + gameSettings.paddleScale > 500) {
+				validMove2 = false;
+			}
+		}
+	}
+	if (validMove2) {
+		gameData.player2.x = tryX2;
+		gameData.player2.y = tryY2;
+	} else {
+		// Try moving only in x
+		let tryX2x = gameData.player2.x + gameData.player2.vx;
+		let tryY2x = gameData.player2.y;
+		let validMove2x = true;
+		for (let py = 0; py < 16 && validMove2x; py++) {
+			for (let px = 0; px < 16 && validMove2x; px++) {
+				if (!paddleData2[py][px]) continue;
+				let pixelX = tryX2x + px * gameSettings.paddleScale;
+				let pixelY = tryY2x + py * gameSettings.paddleScale;
+				if (pixelX < 600 || pixelX + gameSettings.paddleScale > 900 - 10 || pixelY < 0 || pixelY + gameSettings.paddleScale > 500) {
+					validMove2x = false;
+				}
+			}
+		}
+		if (validMove2x) gameData.player2.x = tryX2x;
+		// Try moving only in y
+		let tryX2y = gameData.player2.x;
+		let tryY2y = gameData.player2.y + gameData.player2.vy;
+		let validMove2y = true;
+		for (let py = 0; py < 16 && validMove2y; py++) {
+			for (let px = 0; px < 16 && validMove2y; px++) {
+				if (!paddleData2[py][px]) continue;
+				let pixelX = tryX2y + px * gameSettings.paddleScale;
+				let pixelY = tryY2y + py * gameSettings.paddleScale;
+				if (pixelX < 600 || pixelX + gameSettings.paddleScale > 900 - 10 || pixelY < 0 || pixelY + gameSettings.paddleScale > 500) {
+					validMove2y = false;
+				}
+			}
+		}
+		if (validMove2y) gameData.player2.y = tryY2y;
+	}
+	
+	// Update Matter.js paddle body positions and velocities
+	let bodyIndex1 = 0;
 	for (let py = 0; py < 16; py++) {
 		for (let px = 0; px < 16; px++) {
-			if (paddleData[py][px]) {
-				const pixelX = paddle.x + px * gameSettings.paddleScale;
-				const pixelY = paddle.y + py * gameSettings.paddleScale;
-				const pixelSize = gameSettings.paddleScale;
-				const pixelCenterX = pixelX + pixelSize / 2;
-				const pixelCenterY = pixelY + pixelSize / 2;
-				const dx = ballCenterX - pixelCenterX;
-				const dy = ballCenterY - pixelCenterY;
-				const distance = Math.sqrt(dx * dx + dy * dy);
-				if (distance < ballRadius + pixelSize / 2) {
-					collisions.push({
-						x: pixelCenterX,
-						y: pixelCenterY,
-						px: px,
-						py: py,
-						distance: distance,
-						dx: dx,
-						dy: dy
-					});
-				}
+			if (paddleData1[py][px]) {
+				const x = gameData.player1.x + px * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				const y = gameData.player1.y + py * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				Body.setPosition(player1Bodies[bodyIndex1], { x, y });
+				Body.setVelocity(player1Bodies[bodyIndex1], { x: gameData.player1.vx, y: gameData.player1.vy });
+				bodyIndex1++;
 			}
 		}
 	}
-	if (collisions.length === 0) return false;
-	let finalNormalX = 0;
-	let finalNormalY = 0;
-	let maxPenetration = 0;
-	if (collisions.length === 1) {
-		const collision = collisions[0];
-		finalNormalX = collision.dx;
-		finalNormalY = collision.dy;
-		maxPenetration = (ballRadius + gameSettings.paddleScale / 2) - collision.distance;
-	} else {
-		let isTrapped = false;
-		let hasLeft = false, hasRight = false, hasTop = false, hasBottom = false;
-		for (let collision of collisions) {
-			if (collision.dx < -ballRadius * 0.5) hasLeft = true;
-			if (collision.dx > ballRadius * 0.5) hasRight = true;
-			if (collision.dy < -ballRadius * 0.5) hasTop = true;
-			if (collision.dy > ballRadius * 0.5) hasBottom = true;
-		}
-		isTrapped = (hasLeft && hasRight) || (hasTop && hasBottom);
-		if (isTrapped) {
-			finalNormalX = -Math.sign(ball.vx);
-			finalNormalY = -Math.sign(ball.vy);
-			if (Math.abs(ball.vx) < 0.1 && Math.abs(ball.vy) < 0.1) {
-				const ballRelativeX = ballCenterX - (paddle.x + paddleSize / 2);
-				const ballRelativeY = ballCenterY - (paddle.y + paddleSize / 2);
-				if (Math.abs(ballRelativeX) > Math.abs(ballRelativeY)) {
-					finalNormalX = Math.sign(ballRelativeX);
-					finalNormalY = 0;
-				} else {
-					finalNormalX = 0;
-					finalNormalY = Math.sign(ballRelativeY);
-				}
-			}
-			maxPenetration = ballRadius;
-		} else {
-			let totalWeight = 0;
-			for (let collision of collisions) {
-				const penetration = (ballRadius + gameSettings.paddleScale / 2) - collision.distance;
-				if (penetration > 0) {
-					const weight = penetration * penetration;
-					finalNormalX += collision.dx * weight;
-					finalNormalY += collision.dy * weight;
-					totalWeight += weight;
-					maxPenetration = Math.max(maxPenetration, penetration);
-				}
-			}
-			if (totalWeight > 0) {
-				finalNormalX /= totalWeight;
-				finalNormalY /= totalWeight;
+	let bodyIndex2 = 0;
+	for (let py = 0; py < 16; py++) {
+		for (let px = 0; px < 16; px++) {
+			if (paddleData2[py][px]) {
+				const x = gameData.player2.x + px * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				const y = gameData.player2.y + py * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				Body.setPosition(player2Bodies[bodyIndex2], { x, y });
+				Body.setVelocity(player2Bodies[bodyIndex2], { x: gameData.player2.vx, y: gameData.player2.vy });
+				bodyIndex2++;
 			}
 		}
 	}
-	const normalLength = Math.sqrt(finalNormalX * finalNormalX + finalNormalY * finalNormalY);
-	if (normalLength > 0) {
-		finalNormalX /= normalLength;
-		finalNormalY /= normalLength;
-	} else {
-		finalNormalX = ballCenterX - (paddle.x + paddleSize / 2);
-		finalNormalY = ballCenterY - (paddle.y + paddleSize / 2);
-		const fallbackLength = Math.sqrt(finalNormalX * finalNormalX + finalNormalY * finalNormalY);
-		if (fallbackLength > 0) {
-			finalNormalX /= fallbackLength;
-			finalNormalY /= fallbackLength;
-		}
-	}
-	if (maxPenetration > 0) {
-		ball.x += finalNormalX * maxPenetration;
-		ball.y += finalNormalY * maxPenetration;
-	}
-	const relativeVelX = ball.vx - paddle.vx;
-	const relativeVelY = ball.vy - paddle.vy;
-	const velAlongNormal = relativeVelX * finalNormalX + relativeVelY * finalNormalY;
-	if (velAlongNormal > 0 && collisions.length === 1) return false;
-	const restitution = 0.95;
-	const impulse = -(1 + restitution) * velAlongNormal;
-	ball.vx = relativeVelX + impulse * finalNormalX;
-	ball.vy = relativeVelY + impulse * finalNormalY;
-	ball.vx += paddle.vx * 0.3;
-	ball.vy += paddle.vy * 0.3;
-	const minHorizontalSpeed = ball.baseSpeed * gameData.speedMultiplier * 0.5;
-	if (Math.abs(ball.vx) < minHorizontalSpeed) {
-		ball.vx = Math.sign(ball.vx || (Math.random() > 0.5 ? 1 : -1)) * minHorizontalSpeed;
-	}
-	const maxSpeed = ball.baseSpeed * gameData.speedMultiplier * 2.5;
-	const speed = Math.sqrt(ball.vx ** 2 + ball.vy ** 2);
-	if (speed > maxSpeed) {
-		ball.vx = (ball.vx / speed) * maxSpeed;
-		ball.vy = (ball.vy / speed) * maxSpeed;
-	}
-	gameData.rallies++;
-	if (gameSettings.speedIncrease && gameData.rallies % 5 === 0) {
-		gameData.speedMultiplier = Math.min(gameData.speedMultiplier + 0.1, 2.5);
-		updateSpeedDisplay();
-	}
-	return true;
 }
 
+
 function updateBall() {
-	const ball = gameData.ball;
-	const prevX = ball.x;
-	const prevY = ball.y;
-	ball.x += ball.vx;
-	ball.y += ball.vy;
-	if (ball.y <= 0 || ball.y >= 500 - ball.size) {
-		ball.vy = -ball.vy;
-		ball.y = Math.max(0, Math.min(500 - ball.size, ball.y));
+	// Sync gameData.ball from Matter.js ballBody
+	// Use the center position for both x and y
+	gameData.ball.x = ballBody.position.x;
+	gameData.ball.y = ballBody.position.y;
+	gameData.ball.vx = ballBody.velocity.x;
+	gameData.ball.vy = ballBody.velocity.y;
+
+	// Prevent ball from freezing (minimum velocity)
+	const minSpeed = 1.5;
+	const velocity = Matter.Vector.magnitude(ballBody.velocity);
+	if (velocity < minSpeed) {
+		// Nudge ball along current direction
+		let vx = ballBody.velocity.x;
+		let vy = ballBody.velocity.y;
+		if (Math.abs(vx) < 0.1 && Math.abs(vy) < 0.1) {
+			// If nearly stopped, pick a random direction
+			const angle = Math.random() * 2 * Math.PI;
+			vx = Math.cos(angle);
+			vy = Math.sin(angle);
+		}
+		const norm = Matter.Vector.normalise({ x: vx, y: vy });
+		Matter.Body.setVelocity(ballBody, {
+			x: norm.x * minSpeed,
+			y: norm.y * minSpeed
+		});
 	}
-	let collisionOccurred = false;
-	let collisionAttempts = 0;
-	const maxCollisionAttempts = 3;
-	while (!collisionOccurred && collisionAttempts < maxCollisionAttempts) {
-		collisionAttempts++;
-		if (ball.vx < 0) {
-			if (checkPaddleCollision('player1')) {
-				collisionOccurred = true;
-			}
-		} else if (ball.vx > 0) {
-			if (checkPaddleCollision('player2')) {
-				collisionOccurred = true;
-			}
-		}
-		if (collisionOccurred) {
-			const player = ball.vx > 0 ? 'player2' : 'player1';
-			const paddle = gameData[player];
-			const paddleSize = 16 * gameSettings.paddleScale;
-			if (ball.x + ball.size > paddle.x && ball.x < paddle.x + paddleSize &&
-				ball.y + ball.size > paddle.y && ball.y < paddle.y + paddleSize) {
-				const paddleData = player === 'player1' ? paddleData1 : paddleData2;
-				const ballCenterX = ball.x + ball.size / 2;
-				const ballCenterY = ball.y + ball.size / 2;
-				const ballRadius = ball.size / 2;
-				let stillColliding = false;
-				for (let py = 0; py < 16 && !stillColliding; py++) {
-					for (let px = 0; px < 16 && !stillColliding; px++) {
-						if (paddleData[py][px]) {
-							const pixelX = paddle.x + px * gameSettings.paddleScale;
-							const pixelY = paddle.y + py * gameSettings.paddleScale;
-							const pixelSize = gameSettings.paddleScale;
-							const pixelCenterX = pixelX + pixelSize / 2;
-							const pixelCenterY = pixelY + pixelSize / 2;
-							const distance = Math.sqrt(
-								(ballCenterX - pixelCenterX) ** 2 + 
-								(ballCenterY - pixelCenterY) ** 2
-							);
-							if (distance < ballRadius + pixelSize / 2) {
-								stillColliding = true;
-							}
-						}
-					}
-				}
-				if (stillColliding) {
-					collisionOccurred = false;
-				}
-			}
-		}
-	}
-	if (collisionAttempts >= maxCollisionAttempts) {
-		const player1 = gameData.player1;
-		const player2 = gameData.player2;
-		const ballCenterX = ball.x + ball.size / 2;
-		const ballCenterY = ball.y + ball.size / 2;
-		const ballRadius = ball.size / 2;
-		let stuckInPlayer1 = false;
-		for (let py = 0; py < 16 && !stuckInPlayer1; py++) {
-			for (let px = 0; px < 16 && !stuckInPlayer1; px++) {
-				if (paddleData1[py][px]) {
-					const pixelX = player1.x + px * gameSettings.paddleScale;
-					const pixelY = player1.y + py * gameSettings.paddleScale;
-					const pixelSize = gameSettings.paddleScale;
-					const pixelCenterX = pixelX + pixelSize / 2;
-					const pixelCenterY = pixelY + pixelSize / 2;
-					const distance = Math.sqrt(
-						(ballCenterX - pixelCenterX) ** 2 + 
-						(ballCenterY - pixelCenterY) ** 2
-					);
-					if (distance < ballRadius + pixelSize / 2) {
-						stuckInPlayer1 = true;
-					}
-				}
-			}
-		}
-		let stuckInPlayer2 = false;
-		for (let py = 0; py < 16 && !stuckInPlayer2; py++) {
-			for (let px = 0; px < 16 && !stuckInPlayer2; px++) {
-				if (paddleData2[py][px]) {
-					const pixelX = player2.x + px * gameSettings.paddleScale;
-					const pixelY = player2.y + py * gameSettings.paddleScale;
-					const pixelSize = gameSettings.paddleScale;
-					const pixelCenterX = pixelX + pixelSize / 2;
-					const pixelCenterY = pixelY + pixelSize / 2;
-					const distance = Math.sqrt(
-						(ballCenterX - pixelCenterX) ** 2 + 
-						(ballCenterY - pixelCenterY) ** 2
-					);
-					if (distance < ballRadius + pixelSize / 2) {
-						stuckInPlayer2 = true;
-					}
-				}
-			}
-		}
-		if (stuckInPlayer1) {
-			ball.x = player1.x + 16 * gameSettings.paddleScale + 5;
-			ball.vx = Math.abs(ball.vx);
-		} else if (stuckInPlayer2) {
-			ball.x = player2.x - ball.size - 5;
-			ball.vx = -Math.abs(ball.vx);
-		}
-	}
-	if (ball.x < -ball.size) {
+
+	// ...existing code...
+
+	// Check for scoring
+	// Ball is out of bounds if its center is past the left or right edge
+	if (ballBody.position.x < 0) {
 		gameData.player2.score++;
 		updateScoreDisplay();
 		checkGameEnd();
 		resetGame();
-	} else if (ball.x > 900) {
+	} else if (ballBody.position.x > 900) {
 		gameData.player1.score++;
 		updateScoreDisplay();
 		checkGameEnd();
@@ -745,6 +774,9 @@ function render() {
 	const ctx = canvas.getContext('2d');
 	ctx.fillStyle = '#000';
 	ctx.fillRect(0, 0, 900, 500);
+
+	// Removed gray rectangles for top and bottom walls
+
 	ctx.strokeStyle = '#333';
 	ctx.setLineDash([5, 5]);
 	ctx.beginPath();
@@ -761,14 +793,18 @@ function render() {
 	drawPaddle(ctx, 'player2', paddleData2);
 	ctx.fillStyle = '#fff';
 	ctx.beginPath();
-	ctx.arc(gameData.ball.x + gameData.ball.size/2, gameData.ball.y + gameData.ball.size/2, gameData.ball.size/2, 0, 2 * Math.PI);
+	ctx.arc(ballBody.position.x, ballBody.position.y, gameData.ball.size/2, 0, 2 * Math.PI);
 	ctx.fill();
 }
 
-function gameLoop() {
+function gameLoop(currentTime = 0) {
 	if (gameState !== 'playing') return;
+	const deltaTime = currentTime - lastTime;
+	lastTime = currentTime;
 	handleInput();
 	updatePaddles();
+	// Update Matter.js physics
+	Engine.update(engine, deltaTime);
 	updateBall();
 	render();
 	requestAnimationFrame(gameLoop);
