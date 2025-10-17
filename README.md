@@ -1,8 +1,9 @@
-# PixelPaddle
+![PixelPaddle Logo](img/logo.svg)
 
-PixelPaddle is a creative twist on the classic Pong game, allowing players to design their own paddle shapes using a pixel grid. The paddle shape directly affects ball physics, making each match unique and strategic.
+PixelPaddle is a twist on the classic Pong game, allowing players to design their own paddle shapes using a pixel grid. The paddle shape directly affects ball physics, making each match unique and strategic.
 
 ## Features
+
 - **Custom Paddle Editor:** Draw your own paddle for each player using a 16x16 grid.
 - **Preset Shapes:** Quickly select rectangle, diamond, cross, or circle paddles.
 - **Color Customization:** Choose paddle colors for each player.
@@ -42,4 +43,4 @@ The AI logic was originally designed as a separate module. For active developmen
 
 ## Credits
 
-Created by ssledzieski. Powered by vanilla JavaScript and HTML5 Canvas.
+Created by Samuel Sledzieski. Powered by vanilla JavaScript and HTML5 Canvas.
