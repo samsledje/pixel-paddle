@@ -1,8 +1,89 @@
-// Custom Pong Game Logic
-// Moved from CustomPaddle.html
 
-// AI module functions are now directly included here
-// For more modular development with ES modules, use a local server
+// Menu overlay logic with pausing
+// Import AI module functions (ES module). ai.js exports calculateAIMovement and getAIDifficultyName.
+import { calculateAIMovement, getAIDifficultyName } from './ai.js';
+let isPaused = false;
+function showMenuOverlay() {
+	document.getElementById('pauseMenu').classList.remove('hidden');
+	if (gameState === 'playing' && !isPaused) {
+		pauseGame();
+	}
+}
+function hideMenuOverlay() {
+	document.getElementById('pauseMenu').classList.add('hidden');
+	if (isPaused) {
+		resumeGame();
+	}
+}
+
+function pauseGame() {
+	isPaused = true;
+}
+
+function resumeGame() {
+	if (isPaused) {
+		isPaused = false;
+		lastTime = performance.now();
+		requestAnimationFrame(gameLoop);
+	}
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+	const resumeBtn = document.getElementById('resumeBtn');
+	const returnBtn = document.getElementById('returnBtn');
+	if (resumeBtn) resumeBtn.addEventListener('click', () => { hideMenuOverlay(); });
+	if (returnBtn) returnBtn.addEventListener('click', () => { hideMenuOverlay(); returnToSetup(); });
+
+	// Initialize the game only after DOM is ready
+	initializePaddleGrids();
+	updateSettings();
+
+	// Wire preset and clear buttons (use data attributes set in index.html)
+	const presetButtons = document.querySelectorAll('button[data-preset]');
+	presetButtons.forEach(btn => {
+		btn.addEventListener('click', () => {
+			const preset = btn.dataset.preset;
+			const player = parseInt(btn.dataset.player, 10) || 1;
+			loadPreset(preset, player);
+		});
+	});
+
+	const actionButtons = document.querySelectorAll('button[data-action]');
+	actionButtons.forEach(btn => {
+		btn.addEventListener('click', () => {
+			const action = btn.dataset.action;
+			const player = parseInt(btn.dataset.player, 10) || 1;
+			if (action === 'clear') clearGrid(player);
+		});
+	});
+
+	// Wire start and settings buttons
+	const start1Btn = document.getElementById('start1Btn');
+	const start2Btn = document.getElementById('start2Btn');
+	if (start1Btn) start1Btn.addEventListener('click', () => startGame(false));
+	if (start2Btn) start2Btn.addEventListener('click', () => startGame(true));
+
+	const settingsHeader = document.getElementById('settingsHeader');
+	if (settingsHeader) settingsHeader.addEventListener('click', toggleSettings);
+
+	// Wire game over screen buttons
+	const gameReturnBtn = document.getElementById('gameReturnBtn');
+	const gameRestartBtn = document.getElementById('gameRestartBtn');
+	if (gameReturnBtn) gameReturnBtn.addEventListener('click', returnToSetup);
+	if (gameRestartBtn) gameRestartBtn.addEventListener('click', restartGame);
+});
+// Toast notification utility
+function showToast(message, duration = 2500) {
+	const toast = document.getElementById('toast');
+	if (!toast) return;
+	toast.textContent = message;
+	toast.classList.add('show');
+	clearTimeout(showToast._timeout);
+	showToast._timeout = setTimeout(() => {
+		toast.classList.remove('show');
+	}, duration);
+}
+
 
 // Matter.js setup
 const Matter = window.Matter;
@@ -16,7 +97,7 @@ let paddleData2 = [];
 let gameSettings = {
 	ballSpeed: 2,
 	paddleScale: 5, // 5 is now the default (1x)
-	winScore: 11,
+	winScore: 7,
 	speedIncrease: true,
 	aiDifficulty: 5,
 	player1Color: '#00ffff',
@@ -355,7 +436,7 @@ function startGame(twoPlayer) {
 	const hasPixels1 = paddleData1.some(row => row.some(pixel => pixel));
 	const hasPixels2 = paddleData2.some(row => row.some(pixel => pixel));
 	if (!hasPixels1 || !hasPixels2) {
-		alert('Please design both paddles first!');
+		showToast('Please design both paddles first!');
 		return;
 	}
 	updateSettings();
@@ -363,13 +444,18 @@ function startGame(twoPlayer) {
 	gameState = 'playing';
 	document.getElementById('setupScreen').classList.add('hidden');
 	document.getElementById('gameContainer').classList.remove('hidden');
-	document.getElementById('gameMode').textContent = twoPlayer ? '2 Player' : '1 Player vs AI';
 	document.getElementById('targetScore').textContent = gameSettings.winScore;
+	resetScores();
+	resetGame();
+	// Initialize timing and start the animation loop via requestAnimationFrame
+	lastTime = performance.now();
+	requestAnimationFrame(gameLoop);
+}
 
-	// Create Matter.js engine
+function resetGame() {
+	// Matter.js engine and objects setup
 	engine = Engine.create();
 	engine.world.gravity.y = 0;
-	// Increase constraint and position iterations for more accurate collisions
 	engine.positionIterations = 12;
 	engine.constraintIterations = 12;
 
@@ -377,9 +463,6 @@ function startGame(twoPlayer) {
 	const ballRadius = gameData.ball.size / 2;
 	const canvasWidth = 900;
 	const canvasHeight = 500;
-	// Place walls at the visible edge so the ball always bounces at the edge
-	// Top wall at y=ballRadius, bottom wall at y=canvasHeight - ballRadius, thickness=ball.size
-	// Move top wall higher and bottom wall lower for perfect alignment
 	const topWall = Bodies.rectangle(canvasWidth / 2, 0 - gameData.ball.size / 2, canvasWidth, gameData.ball.size, {
 		isStatic: true,
 		restitution: 1,
@@ -407,12 +490,12 @@ function startGame(twoPlayer) {
 
 	// Create paddle bodies
 	const paddleBodyOptions = {
-		isStatic: false, // dynamic
+		isStatic: false,
 		restitution: 1,
 		friction: 0,
 		frictionStatic: 0,
 		frictionAir: 0,
-		mass: 1000 // very heavy
+		mass: 1000
 	};
 	player1Bodies = [];
 	for (let py = 0; py < 16; py++) {
@@ -458,41 +541,57 @@ function startGame(twoPlayer) {
 		});
 	});
 
-	resetGame();
-	lastTime = performance.now();
-	gameLoop();
-}
-
-function resetGame() {
+	// Reset game state
 	const baseSpeed = gameSettings.ballSpeed;
-	gameData.player1 = { x: 50, y: 200, vx: 0, vy: 0, score: gameData.player1.score };
-	gameData.player2 = { x: 650, y: 200, vx: 0, vy: 0, score: gameData.player2.score };
+	gameData.player1 = { x: 50, y: 200, vx: 0, vy: 0, score: 0 };
+	gameData.player2 = { x: 650, y: 200, vx: 0, vy: 0, score: 0 };
 	gameData.speedMultiplier = 1;
 	gameData.rallies = 0;
-	// Reset AI state
-	gameData.aiState = { 
-		target: { x: 650, y: 200 }, 
+	gameData.aiState = {
+		target: { x: 650, y: 200 },
 		lastBallX: 0,
 		aggressiveness: 0.5,
 		timeSinceLastMove: 0
 	};
-	// Set ball position and velocity
 	Body.setPosition(ballBody, { x: 450, y: 250 });
 	let vx = Math.random() > 0.5 ? baseSpeed : -baseSpeed;
 	let vy = (Math.random() - 0.5) * baseSpeed;
 	Body.setVelocity(ballBody, { x: vx, y: vy });
 	updateSpeedDisplay();
+	updateModeDisplay();
 }
+
+// Update mode display on game start
 
 function resetScores() {
 	gameData.player1.score = 0;
 	gameData.player2.score = 0;
 	updateScoreDisplay();
+	// Also update the scorebug display immediately
+	document.getElementById('score1').textContent = '0';
+	document.getElementById('score2').textContent = '0';
 }
 
 function updateScoreDisplay() {
-	document.getElementById('score1').textContent = gameData.player1.score;
-	document.getElementById('score2').textContent = gameData.player2.score;
+    document.getElementById('score1').textContent = gameData.player1.score;
+    document.getElementById('score2').textContent = gameData.player2.score;
+}
+
+function updateModeDisplay() {
+    const modeIcon = document.getElementById('gameModeIcon');
+    const modeText = document.getElementById('gameModeText');
+    if (!modeIcon || !modeText) return;
+    if (twoPlayerMode) {
+        modeIcon.className = 'mode-icon two-player';
+        modeText.textContent = '2 Player Mode';
+        document.getElementById('scorebugName1').textContent = 'P1';
+        document.getElementById('scorebugName2').textContent = 'P2';
+    } else {
+        modeIcon.className = 'mode-icon one-player';
+        modeText.textContent = '1 Player vs AI';
+        document.getElementById('scorebugName1').textContent = 'You';
+        document.getElementById('scorebugName2').textContent = 'AI';
+    }
 }
 
 function updateSpeedDisplay() {
@@ -695,6 +794,7 @@ function updatePaddles() {
 }
 
 
+
 function updateBall() {
 	// Sync gameData.ball from Matter.js ballBody
 	// Use the center position for both x and y
@@ -723,21 +823,71 @@ function updateBall() {
 		});
 	}
 
-	// ...existing code...
-
 	// Check for scoring
 	// Ball is out of bounds if its center is past the left or right edge
 	if (ballBody.position.x < 0) {
 		gameData.player2.score++;
 		updateScoreDisplay();
-		checkGameEnd();
-		resetGame();
+		if (!checkGameEnd()) {
+			resetBallAndPaddles();
+		}
 	} else if (ballBody.position.x > 900) {
 		gameData.player1.score++;
 		updateScoreDisplay();
-		checkGameEnd();
-		resetGame();
+		if (!checkGameEnd()) {
+			resetBallAndPaddles();
+		}
 	}
+// Only called after a score
+function resetBallAndPaddles() {
+	// Reset ball position and velocity
+	Body.setPosition(ballBody, { x: 450, y: 250 });
+	let baseSpeed = gameSettings.ballSpeed;
+	let vx = Math.random() > 0.5 ? baseSpeed : -baseSpeed;
+	let vy = (Math.random() - 0.5) * baseSpeed;
+	Body.setVelocity(ballBody, { x: vx, y: vy });
+	// Reset player positions
+	gameData.player1.x = 50;
+	gameData.player1.y = 200;
+	gameData.player2.x = 650;
+	gameData.player2.y = 200;
+	// Also update paddle bodies
+	let bodyIndex1 = 0;
+	for (let py = 0; py < 16; py++) {
+		for (let px = 0; px < 16; px++) {
+			if (paddleData1[py][px]) {
+				const x = gameData.player1.x + px * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				const y = gameData.player1.y + py * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				Body.setPosition(player1Bodies[bodyIndex1], { x, y });
+				Body.setVelocity(player1Bodies[bodyIndex1], { x: 0, y: 0 });
+				bodyIndex1++;
+			}
+		}
+	}
+	let bodyIndex2 = 0;
+	for (let py = 0; py < 16; py++) {
+		for (let px = 0; px < 16; px++) {
+			if (paddleData2[py][px]) {
+				const x = gameData.player2.x + px * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				const y = gameData.player2.y + py * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+				Body.setPosition(player2Bodies[bodyIndex2], { x, y });
+				Body.setVelocity(player2Bodies[bodyIndex2], { x: 0, y: 0 });
+				bodyIndex2++;
+			}
+		}
+	}
+	// Reset other game state
+	gameData.speedMultiplier = 1;
+	gameData.rallies = 0;
+	gameData.aiState = {
+		target: { x: 650, y: 200 },
+		lastBallX: 0,
+		aggressiveness: 0.5,
+		timeSinceLastMove: 0
+	};
+	updateSpeedDisplay();
+	updateModeDisplay();
+}
 }
 
 function checkGameEnd() {
@@ -748,7 +898,9 @@ function checkGameEnd() {
 		document.getElementById('finalScore').textContent = 
 			`${gameData.player1.score} - ${gameData.player2.score}`;
 		document.getElementById('gameOver').classList.remove('hidden');
+		return true;
 	}
+	return false;
 }
 
 function drawPaddle(ctx, player, paddleData) {
@@ -799,6 +951,7 @@ function render() {
 
 function gameLoop(currentTime = 0) {
 	if (gameState !== 'playing') return;
+	if (isPaused) return; // Suspend updates while paused
 	const deltaTime = currentTime - lastTime;
 	lastTime = currentTime;
 	handleInput();
@@ -815,6 +968,7 @@ function returnToSetup() {
 	document.getElementById('gameContainer').classList.add('hidden');
 	document.getElementById('setupScreen').classList.remove('hidden');
 	document.getElementById('gameOver').classList.add('hidden');
+	// Always reset scores and ball state when returning to setup
 	resetScores();
 }
 
@@ -823,20 +977,28 @@ function restartGame() {
 	resetScores();
 	resetGame();
 	gameState = 'playing';
-	gameLoop();
+	// Ensure timing is initialized and start the loop using requestAnimationFrame
+	lastTime = performance.now();
+	requestAnimationFrame(gameLoop);
 }
 
 // Event listeners
 document.addEventListener('keydown', (e) => {
 	gameData.keys[e.code] = true;
-	if (e.code === 'Escape' && gameState === 'playing') {
-		returnToSetup();
+	if (e.code === 'Escape') {
+		const menu = document.getElementById('pauseMenu');
+		if (menu && !menu.classList.contains('hidden')) {
+			hideMenuOverlay();
+		} else {
+			showMenuOverlay();
+		}
 	}
 	// Prevent arrow keys from scrolling the page
-	if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+	if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
 		e.preventDefault();
 	}
 });
+
 
 document.addEventListener('keyup', (e) => {
 	gameData.keys[e.code] = false;
@@ -858,107 +1020,3 @@ document.getElementById('player2Color').addEventListener('input', function() {
     gameSettings.player2Color = this.value;
     updateGridDisplay(); // This updates the CSS variables
 });
-
-// Initialize the game
-initializePaddleGrids();
-updateSettings();
-
-// Adding AI functions directly to the main script
-
-/**
- * Handles AI player movement based on current game state
- */
-function calculateAIMovement(ball, aiPlayer, aiState, difficulty, paddleSize, speed) {
-    // AI state tracking
-    aiState.timeSinceLastMove++;
-
-    // Scale difficulty parameters (0.0-1.0)
-    const difficultyScale = difficulty / 10;
-    const reactionSpeed = 0.3 + (difficultyScale * 0.7); // 0.3 to 1.0
-    const accuracy = 0.3 + (difficultyScale * 0.7); // 0.3 to 1.0
-    const aggressiveness = 0.2 + (difficultyScale * 0.6); // 0.2 to 0.8
-    
-    // Determine AI strategy based on ball position and difficulty
-    let targetX = aiPlayer.x;
-    let targetY = aiPlayer.y;
-    
-    if (ball.vx > 0) { // Ball coming towards AI
-        // Predict where ball will be
-        const timeToReach = (aiPlayer.x - ball.x) / Math.abs(ball.vx);
-        const predictedY = ball.y + (ball.vy * timeToReach);
-        
-        // Center paddle on predicted position with some error
-        const errorMargin = (1 - accuracy) * 60; // Max 60px error on easiest
-        const yError = (Math.random() - 0.5) * errorMargin;
-        targetY = predictedY - paddleSize / 2 + yError;
-        
-        // Occasionally be more aggressive and move towards center
-        if (Math.random() < aggressiveness && aiState.timeSinceLastMove > 30) {
-            const centerDistance = Math.abs(aiPlayer.x - 750); // Distance from right-center of AI area
-            if (centerDistance > 50) {
-                targetX = aiPlayer.x - 20; // Move towards center
-            }
-            aiState.timeSinceLastMove = 0;
-        }
-    } else { // Ball going away from AI
-        // Be more adventurous - move around the play area
-        if (Math.random() < aggressiveness * 0.3 && aiState.timeSinceLastMove > 60) {
-            // Randomly choose a new position to move to
-            const minX = 620; // Start of AI area + some buffer
-            const maxX = 870; // End of AI area - paddle width
-            const minY = 50;
-            const maxY = 400;
-            
-            aiState.target.x = minX + Math.random() * (maxX - minX);
-            aiState.target.y = minY + Math.random() * (maxY - minY);
-            aiState.timeSinceLastMove = 0;
-        }
-        
-        // Move towards the target position
-        targetX = aiState.target.x;
-        targetY = aiState.target.y;
-    }
-    
-    // Calculate movement with reaction speed
-    const deltaX = targetX - aiPlayer.x;
-    const deltaY = targetY - aiPlayer.y;
-    
-    let vx = 0;
-    let vy = 0;
-    
-    // Apply movement with reaction speed limitation
-    if (Math.abs(deltaX) > 5) {
-        vx = Math.sign(deltaX) * speed * reactionSpeed;
-    }
-    if (Math.abs(deltaY) > 5) {
-        vy = Math.sign(deltaY) * speed * reactionSpeed;
-    }
-    
-    // Add some randomness to movement for lower difficulties
-    if (difficultyScale < 0.7 && Math.random() < 0.05) {
-        vx += (Math.random() - 0.5) * speed * 0.3;
-        vy += (Math.random() - 0.5) * speed * 0.3;
-    }
-
-    return { vx, vy };
-}
-
-/**
- * Gets text description for AI difficulty level
- */
-function getAIDifficultyName(difficultyLevel) {
-    const difficultyNames = [
-        '', 
-        'Very Easy', 
-        'Easy', 
-        'Easy-Medium', 
-        'Medium', 
-        'Normal', 
-        'Medium-Hard', 
-        'Hard', 
-        'Very Hard', 
-        'Expert', 
-        'Impossible'
-    ];
-    return difficultyNames[difficultyLevel] || 'Custom';
-}

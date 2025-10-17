@@ -5,11 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PixelPaddle</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/toast.css">
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <!-- Font Awesome for footer icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-papmQn1+Z1Qw1Qn1+Z1Qw1Qn1+Z1Qw1Qn1+Z1Qw1Qn1+Z1Qw1Qn1+Z1Qw1Qn1+Z1Qw1Qn1+Z1Qw1Q==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="icon" href="img/favicon.png" type="image/png">
 </head>
 <body>
+    <div id="toast" class="toast"></div>
     <div class="game-logo-container">
         <!-- Embedded SVG with CSS variables for dynamic colors -->
         <svg width="400" height="200" viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg" class="game-logo">
@@ -54,11 +57,11 @@
                     <svg id="paddlePreview1" width="80" height="80" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" class="paddle-preview"></svg>
                 </div>
                 <div class="preset-buttons">
-                    <button onclick="loadPreset('rectangle', 1)">Rectangle</button>
-                    <button onclick="loadPreset('diamond', 1)">Diamond</button>
-                    <button onclick="loadPreset('cross', 1)">Cross</button>
-                    <button onclick="loadPreset('circle', 1)">Circle</button>
-                    <button onclick="clearGrid(1)">Clear</button>
+                    <button data-preset="rectangle" data-player="1">Rectangle</button>
+                    <button data-preset="diamond" data-player="1">Diamond</button>
+                    <button data-preset="cross" data-player="1">Cross</button>
+                    <button data-preset="circle" data-player="1">Circle</button>
+                    <button data-action="clear" data-player="1">Clear</button>
                 </div>
             </div>
             
@@ -69,17 +72,17 @@
                     <svg id="paddlePreview2" width="80" height="80" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" class="paddle-preview"></svg>
                 </div>
                 <div class="preset-buttons">
-                    <button onclick="loadPreset('rectangle', 2)">Rectangle</button>
-                    <button onclick="loadPreset('diamond', 2)">Diamond</button>
-                    <button onclick="loadPreset('cross', 2)">Cross</button>
-                    <button onclick="loadPreset('circle', 2)">Circle</button>
-                    <button onclick="clearGrid(2)">Clear</button>
+                    <button data-preset="rectangle" data-player="2">Rectangle</button>
+                    <button data-preset="diamond" data-player="2">Diamond</button>
+                    <button data-preset="cross" data-player="2">Cross</button>
+                    <button data-preset="circle" data-player="2">Circle</button>
+                    <button data-action="clear" data-player="2">Clear</button>
                 </div>
             </div>
         </div>
         
         <div class="settings-panel">
-            <div class="settings-header" onclick="toggleSettings()">
+            <div class="settings-header" id="settingsHeader">
                 <span><strong>⚙️ Game Settings</strong></span>
                 <span class="settings-toggle">▼</span>
             </div>
@@ -97,7 +100,7 @@
                     </div>
                     <div class="setting-group">
                         <label>Win Score</label>
-                        <input type="number" id="winScore" min="3" max="21" value="11" title="Win Score">
+                        <input type="number" id="winScore" min="3" max="21" value="7" title="Win Score">
                     </div>
                     <div class="setting-group">
                         <label>Speed Increase</label>
@@ -122,8 +125,8 @@
         </div>
         
         <div class="controls">
-            <button onclick="startGame(false)">Start 1 Player (vs AI)</button>
-            <button onclick="startGame(true)">Start 2 Player</button>
+            <button id="start1Btn">Start 1 Player (vs AI)</button>
+            <button id="start2Btn">Start 2 Player</button>
         </div>
         
         <div class="instructions">
@@ -133,24 +136,39 @@
         </div>
     </div>
 
+
     <div id="gameContainer" class="game-container hidden">
-        <canvas id="gameCanvas" width="900" height="500"></canvas>
-        <div class="game-info">
-            <div id="gameMode">1 Player vs AI</div>
-            <div>Press ESC to return to setup</div>
-            <div>Ball Speed: <span id="currentSpeed">2.0</span></div>
+        <!-- Scorebug overlay at the top -->
+        <div class="scorebug" id="scorebug">
+            <div class="scorebug-player scorebug-player1">
+                <span class="scorebug-name" id="scorebugName1">P1</span>
+                <span class="scorebug-score" id="score1">0</span>
+            </div>
+            <div class="scorebug-center">First to <span id="targetScore">7</span></div>
+            <div class="scorebug-player scorebug-player2">
+                <span class="scorebug-score" id="score2">0</span>
+                <span class="scorebug-name" id="scorebugName2">P2</span>
+            </div>
         </div>
-        <div class="score">
-            <div>Player 1: <span id="score1">0</span></div>
-            <div>Player 2: <span id="score2">0</span></div>
-            <div>First to: <span id="targetScore">11</span></div>
+        <canvas id="gameCanvas" width="900" height="500"></canvas>
+        <!-- Info area below the play area -->
+        <div class="game-lower-info">
+            <span id="gameModeIcon" class="mode-icon" title="Game Mode"></span>
+            <span id="gameModeText">1 Player vs AI</span>
+            <span class="ball-speed">Ball Speed: <span id="currentSpeed">2.0</span></span>
+            <span class="help-text">Press <kbd>ESC</kbd> to return</span>
         </div>
         <div id="gameOver" class="game-over hidden">
             <h2 id="winnerText">Player 1 Wins!</h2>
             <p>Final Score: <span id="finalScore"></span></p>
-            <button onclick="returnToSetup()">Back to Setup</button>
-            <button onclick="restartGame()">Play Again</button>
+            <button id="gameReturnBtn">Back to Setup</button>
+            <button id="gameRestartBtn">Play Again</button>
         </div>
+                <div id="pauseMenu" class="pause-menu hidden">
+                    <h2>Game Paused</h2>
+                    <button id="resumeBtn">Resume (ESC)</button>
+                    <button id="returnBtn">Return to Main Menu</button>
+                </div>
     </div>
 
         <footer class="footer-small">
@@ -176,7 +194,7 @@
         </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
-    <script src="js/game.js"></script>
+    <script type="module" src="js/game.js"></script>
 
 </body>
 </html>

@@ -1,0 +1,23 @@
+/* Toast notification styles */
+.toast {
+  position: fixed;
+  top: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 30, 50, 0.98);
+  color: #fff;
+  padding: 16px 32px;
+  border-radius: 12px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 1.1rem;
+  box-shadow: 0 4px 24px #000a;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s, top 0.3s;
+}
+.toast.show {
+  opacity: 1;
+  pointer-events: auto;
+  top: 56px;
+}
