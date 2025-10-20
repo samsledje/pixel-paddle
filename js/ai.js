@@ -1,13 +1,10 @@
 /**
- * Elite AI Module for PixelPaddle v2.0
+ * Elite AI Module for PixelPaddle v2.1
  *
- * Major improvements:
- * - Multi-bounce trajectory prediction with proper physics
- * - Paddle velocity optimization for strategic returns
- * - Advanced defensive positioning based on opponent analysis
- * - Smarter chase/loop logic with spatial awareness
- * - Strategic shot placement to force errors
- * - Considers paddle shape for optimal contact points
+ * Bug fixes:
+ * - Fixed slow ball chase (AI no longer moves away from slow balls in its zone)
+ * - Fixed diagonal paddle shapes (accounts for paddle width at intercept Y)
+ * - Improved spatial awareness for all paddle geometries
  */
 
 // Game constants
@@ -18,11 +15,6 @@ const BALL_RADIUS = 6;
 
 /**
  * Predicts ball trajectory with accurate multi-bounce physics
- *
- * @param {Object} ball - Ball object with x, y, vx, vy properties
- * @param {number} targetX - The x-coordinate to predict intersection at
- * @param {number} maxBounces - Maximum bounces to simulate (default: 10)
- * @returns {Object|null} - Detailed prediction or null if unreachable
  */
 function predictBallTrajectory(ball, targetX = 600, maxBounces = 10) {
     if (ball.vx <= 0) {
@@ -35,8 +27,8 @@ function predictBallTrajectory(ball, targetX = 600, maxBounces = 10) {
     let vy = ball.vy;
     let time = 0;
     let bounces = 0;
-    const dt = 0.1; // Time step for simulation
-    const maxTime = 500; // Prevent infinite loops
+    const dt = 0.1;
+    const maxTime = 500;
 
     // Simulate ball movement
     while (x < targetX && time < maxTime && bounces <= maxBounces) {
@@ -59,7 +51,7 @@ function predictBallTrajectory(ball, targetX = 600, maxBounces = 10) {
             bounces: bounces,
             finalVx: vx,
             finalVy: vy,
-            confidence: Math.max(0.3, 1.0 - bounces * 0.15) // Confidence decreases with bounces
+            confidence: Math.max(0.3, 1.0 - bounces * 0.15)
         };
     }
 
@@ -67,11 +59,17 @@ function predictBallTrajectory(ball, targetX = 600, maxBounces = 10) {
 }
 
 /**
- * Enhanced paddle shape analysis with strategic points
+ * Enhanced paddle shape analysis with width-at-height mapping
+ * CRITICAL: Now tracks paddle width at each Y position for diagonal shapes
  */
 function analyzePaddleShape(paddleData, paddleScale) {
     const activePixels = [];
     let totalX = 0, totalY = 0, count = 0;
+
+    // Build map of width at each Y position
+    const widthAtY = new Array(16).fill(0);
+    const leftmostAtY = new Array(16).fill(16);
+    const rightmostAtY = new Array(16).fill(0);
 
     for (let y = 0; y < 16; y++) {
         for (let x = 0; x < 16; x++) {
@@ -80,6 +78,11 @@ function analyzePaddleShape(paddleData, paddleScale) {
                 totalX += x;
                 totalY += y;
                 count++;
+
+                // Track width at this Y
+                widthAtY[y]++;
+                leftmostAtY[y] = Math.min(leftmostAtY[y], x);
+                rightmostAtY[y] = Math.max(rightmostAtY[y], x);
             }
         }
     }
@@ -89,6 +92,9 @@ function analyzePaddleShape(paddleData, paddleScale) {
             centerX: 8, centerY: 8,
             topY: 0, bottomY: 15,
             leftmostX: 0, rightmostX: 15,
+            widthAtY: new Array(16).fill(16),
+            leftmostAtY: new Array(16).fill(0),
+            rightmostAtY: new Array(16).fill(15),
             topEdge: [], bottomEdge: [], leftEdge: [], rightEdge: [],
             activePixels: []
         };
@@ -101,7 +107,7 @@ function analyzePaddleShape(paddleData, paddleScale) {
     const minX = Math.min(...activePixels.map(p => p.x));
     const maxX = Math.max(...activePixels.map(p => p.x));
 
-    // Find edge pixels for strategic hitting
+    // Find edge pixels
     const topEdge = activePixels.filter(p => p.y === minY);
     const bottomEdge = activePixels.filter(p => p.y === maxY);
     const leftEdge = activePixels.filter(p => p.x === minX);
@@ -113,19 +119,40 @@ function analyzePaddleShape(paddleData, paddleScale) {
         leftmostX: minX, rightmostX: maxX,
         height: (maxY - minY + 1) * paddleScale,
         width: (maxX - minX + 1) * paddleScale,
+        widthAtY,           // NEW: Width at each Y position
+        leftmostAtY,        // NEW: Leftmost pixel at each Y
+        rightmostAtY,       // NEW: Rightmost pixel at each Y
         topEdge, bottomEdge, leftEdge, rightEdge,
         activePixels
     };
 }
 
 /**
+ * Calculates the effective X offset needed to center paddle at given Y
+ * CRITICAL FIX: Accounts for varying paddle width at different Y positions
+ */
+function calculatePaddleOffsetForY(paddleShape, targetPixelY, paddleScale) {
+    // Clamp to valid Y range
+    const clampedY = Math.max(0, Math.min(15, Math.round(targetPixelY)));
+
+    // Get width at this Y position
+    const width = paddleShape.widthAtY[clampedY];
+
+    if (width === 0) {
+        // No pixels at this Y - use center
+        return paddleShape.centerX * paddleScale;
+    }
+
+    // Calculate center of pixels at this Y
+    const leftmost = paddleShape.leftmostAtY[clampedY];
+    const rightmost = paddleShape.rightmostAtY[clampedY];
+    const centerAtY = (leftmost + rightmost) / 2;
+
+    return centerAtY * paddleScale;
+}
+
+/**
  * Calculates optimal paddle velocity for strategic ball returns
- *
- * @param {Object} ball - Ball object
- * @param {Object} paddle - Paddle object
- * @param {Object} targetPosition - Where paddle should be
- * @param {string} strategy - Current strategy
- * @returns {Object} - Velocity optimization info
  */
 function calculateVelocityStrategy(ball, paddle, targetPosition, strategy) {
     const dx = targetPosition.x - paddle.x;
@@ -134,24 +161,22 @@ function calculateVelocityStrategy(ball, paddle, targetPosition, strategy) {
 
     if (distance < 2) {
         // At position - now optimize impact velocity
-        if (strategy === 'aggressive' || strategy === 'smash') {
-            // Move INTO the ball for power
+        if (strategy === 'aggressive' || strategy.includes('smash')) {
             return {
-                vx: ball.vx > 0 ? -4 : 4, // Move against ball direction
+                vx: ball.vx > 0 ? -4 : 4,
                 vy: 0,
                 reason: 'power_hit'
             };
         } else if (strategy === 'absorb') {
-            // Move WITH the ball to reduce return speed
             return {
-                vx: ball.vx > 0 ? 2 : -2, // Move with ball
+                vx: ball.vx > 0 ? 2 : -2,
                 vy: ball.vy > 0 ? 2 : -2,
                 reason: 'soft_return'
             };
         }
     }
 
-    return null; // Use normal movement to target
+    return null;
 }
 
 /**
@@ -160,18 +185,13 @@ function calculateVelocityStrategy(ball, paddle, targetPosition, strategy) {
 function analyzeOpponentThreat(ball, prediction) {
     if (!prediction) return { threat: 'none', expectedReturnY: 250 };
 
-    // Estimate where opponent might return ball from
-    const estimatedOpponentY = ball.y; // Simplified - could track player1 position
     const threatLevel = prediction.confidence * (1 / Math.max(1, prediction.time / 50));
 
-    // Predict likely return angle based on ball trajectory
-    let expectedReturnY = 250; // Default center
+    let expectedReturnY = 250;
 
     if (Math.abs(ball.vy) > Math.abs(ball.vx) * 0.5) {
-        // Ball has vertical momentum - opponent likely to hit at angle
         expectedReturnY = prediction.y;
     } else {
-        // Horizontal shot - opponent may return to center
         expectedReturnY = 250;
     }
 
@@ -183,13 +203,13 @@ function analyzeOpponentThreat(ball, prediction) {
 }
 
 /**
- * Enhanced interception strategy with velocity optimization
+ * Enhanced interception strategy with width-aware positioning
  */
 function calculateInterceptionStrategy(ball, paddle, paddleShape, paddleScale) {
     const prediction = predictBallTrajectory(ball, PLAYER2_ZONE.left);
 
     if (!prediction) {
-        // Defensive positioning based on opponent analysis
+        // Defensive positioning
         const opponentThreat = analyzeOpponentThreat(ball, null);
         return {
             targetX: 650,
@@ -200,55 +220,63 @@ function calculateInterceptionStrategy(ball, paddle, paddleShape, paddleScale) {
         };
     }
 
-    // Calculate base target position
-    const paddleCenterYOffset = paddleShape.centerY * paddleScale;
-    let targetPaddleY = prediction.y - paddleCenterYOffset;
+    // CRITICAL FIX: Calculate target Y considering paddle width at that position
+    const predictedPixelY = prediction.y / paddleScale;
+    const xOffsetForY = calculatePaddleOffsetForY(paddleShape, predictedPixelY, paddleScale);
+
+    // Target Y is the predicted ball Y minus the offset to center paddle at that Y
+    let targetPaddleY = prediction.y - xOffsetForY;
     let targetPaddleX = paddle.x;
     let strategy = 'intercept';
     let urgency = Math.min(1.0, 5.0 / Math.max(1, prediction.time));
 
-    // Strategic positioning based on ball characteristics
     const ballSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
-    const ballAngle = Math.atan2(ball.vy, ball.vx);
 
-    // STRATEGIC SHOT SELECTION
+    // Strategic shot selection
     if (prediction.confidence > 0.7 && ballSpeed < 6) {
-        // Good prediction, moderate speed - aim for corners
         if (prediction.y < 150) {
-            // Ball coming high - smash down
-            targetPaddleY = prediction.y - paddleShape.topY * paddleScale;
+            // Hit with top edge
+            const topPixelY = paddleShape.topY;
+            const xOffsetTop = calculatePaddleOffsetForY(paddleShape, topPixelY, paddleScale);
+            targetPaddleY = prediction.y - xOffsetTop;
             strategy = 'smash_down';
         } else if (prediction.y > 350) {
-            // Ball coming low - lift up
-            targetPaddleY = prediction.y - paddleShape.bottomY * paddleScale;
+            // Hit with bottom edge
+            const bottomPixelY = paddleShape.bottomY;
+            const xOffsetBottom = calculatePaddleOffsetForY(paddleShape, bottomPixelY, paddleScale);
+            targetPaddleY = prediction.y - xOffsetBottom;
             strategy = 'smash_up';
         } else {
-            // Mid-height - aim for corners
             strategy = 'aim_corner';
         }
     } else if (ballSpeed > 8) {
-        // Fast ball - focus on contact, use center
-        targetPaddleY = prediction.y - paddleShape.centerY * paddleScale;
+        // Fast ball - use widest part of paddle
+        const widestY = paddleShape.widthAtY.indexOf(Math.max(...paddleShape.widthAtY));
+        const xOffsetWidest = calculatePaddleOffsetForY(paddleShape, widestY, paddleScale);
+        targetPaddleY = prediction.y - xOffsetWidest;
         strategy = 'defensive_block';
     } else if (Math.abs(ball.vy) > Math.abs(ball.vx)) {
-        // High vertical component - counter with opposite spin
+        // Counter spin
         if (ball.vy > 0) {
-            targetPaddleY = prediction.y - paddleShape.bottomY * paddleScale;
+            const bottomPixelY = paddleShape.bottomY;
+            const xOffsetBottom = calculatePaddleOffsetForY(paddleShape, bottomPixelY, paddleScale);
+            targetPaddleY = prediction.y - xOffsetBottom;
             strategy = 'counter_spin_down';
         } else {
-            targetPaddleY = prediction.y - paddleShape.topY * paddleScale;
+            const topPixelY = paddleShape.topY;
+            const xOffsetTop = calculatePaddleOffsetForY(paddleShape, topPixelY, paddleScale);
+            targetPaddleY = prediction.y - xOffsetTop;
             strategy = 'counter_spin_up';
         }
     }
 
-    // Aggressive forward positioning when time permits
+    // Aggressive positioning
     if (prediction.time > 60 && ball.x < 500 && prediction.confidence > 0.6) {
         targetPaddleX = Math.max(PLAYER2_ZONE.left, paddle.x - 10);
         strategy = 'aggressive';
         urgency = 0.85;
     }
 
-    // Velocity optimization
     let velocityStrategy = null;
     if (strategy.includes('smash')) {
         velocityStrategy = 'power_hit';
@@ -267,40 +295,56 @@ function calculateInterceptionStrategy(ball, paddle, paddleShape, paddleScale) {
 }
 
 /**
- * Improved chase logic with better opportunity detection
+ * CRITICAL FIX: Enhanced chase logic that handles balls in AI zone
  */
 function checkChaseOpportunity(ball, paddle, paddleShape, paddleScale) {
     const paddleRight = paddle.x + 16 * paddleScale;
     const ballSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
 
-    // More sophisticated chase detection
+    // FIX: Expand chase detection to include balls in AI zone moving slowly
+    const isBallInZone = ball.x >= PLAYER2_ZONE.left && ball.x <= PLAYER2_ZONE.right;
     const isBallBehind = ball.x > paddleRight + 10;
-    const isBallSlow = ballSpeed < 4.5; // Increased threshold
+    const isBallSlow = ballSpeed < 4.5;
     const isBallApproachable = ball.x < PLAYER2_ZONE.right - 20;
 
-    // Calculate if chase is viable
-    if ((isBallBehind || (ball.vx > 0 && ball.vx < 3)) && isBallSlow && isBallApproachable) {
+    // NEW: If ball is in our zone and slow, we should chase it even if not "behind"
+    const shouldChase = isBallSlow && isBallApproachable && (isBallBehind ||
+        (isBallInZone && ball.vx < 3 && ball.vx > 0));
+
+    if (shouldChase) {
+        // Predict where ball will be
+        const paddleSpeed = 4;
+        const paddleCenterX = paddle.x + 8 * paddleScale;
+        const paddleCenterY = paddle.y + 8 * paddleScale;
+
         const distanceToBall = Math.sqrt(
-            Math.pow(ball.x - (paddle.x + 8 * paddleScale), 2) +
-            Math.pow(ball.y - (paddle.y + 8 * paddleScale), 2)
+            Math.pow(ball.x - paddleCenterX, 2) +
+            Math.pow(ball.y - paddleCenterY, 2)
         );
 
-        // Account for ball movement during chase
-        const paddleSpeed = 4;
         const timeToReach = distanceToBall / paddleSpeed;
         const ballFutureX = ball.x + ball.vx * timeToReach;
         const ballFutureY = ball.y + ball.vy * timeToReach;
 
-        // Check if future position is reachable and in bounds
+        // Account for bounces during chase
+        let futureY = ballFutureY;
+        while (futureY < 0 || futureY > CANVAS_HEIGHT) {
+            if (futureY < 0) futureY = -futureY;
+            if (futureY > CANVAS_HEIGHT) futureY = 2 * CANVAS_HEIGHT - futureY;
+        }
+
         const maxReachX = PLAYER2_ZONE.right - 16 * paddleScale - 5;
 
-        if (ballFutureX < maxReachX && ballFutureY > 0 && ballFutureY < CANVAS_HEIGHT) {
-            // Verify we have SPACE to position paddle
-            const targetX = Math.min(maxReachX, ballFutureX - 8 * paddleScale);
+        if (ballFutureX < maxReachX && futureY > 0 && futureY < CANVAS_HEIGHT) {
+            const targetX = Math.min(maxReachX, Math.max(PLAYER2_ZONE.left, ballFutureX - 8 * paddleScale));
+
+            // Use width-aware positioning
+            const predictedPixelY = futureY / paddleScale;
+            const xOffsetForY = calculatePaddleOffsetForY(paddleShape, predictedPixelY, paddleScale);
 
             return {
                 targetX: targetX,
-                targetY: ballFutureY - paddleShape.centerY * paddleScale,
+                targetY: futureY - xOffsetForY,
                 strategy: 'chase',
                 urgency: 0.95
             };
@@ -325,30 +369,32 @@ function checkLoopAroundOpportunity(ball, paddle, paddleShape, paddleScale) {
     const ballSpeed = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
 
     if (ballSpeed > 3.5) {
-        return null; // Too fast to loop
+        return null;
     }
 
     // Calculate spatial constraints
     const maxReachX = PLAYER2_ZONE.right - paddleWidth - 5;
     const idealTargetX = Math.min(maxReachX, ball.x + 40);
 
-    // Verify we have space
     if (idealTargetX < PLAYER2_ZONE.left) {
-        return null; // No space to position
+        return null;
     }
 
     // Calculate timing
     const distanceToTarget = Math.abs(idealTargetX - paddle.x);
-    const timeToTarget = distanceToTarget / 4; // Paddle speed
+    const timeToTarget = distanceToTarget / 4;
 
     const distanceToWall = CANVAS_WIDTH - ball.x;
     const timeToWall = distanceToWall / Math.max(0.5, ball.vx);
 
-    // Need comfortable margin
     if (timeToTarget < timeToWall * 0.7) {
+        // Use width-aware positioning
+        const predictedPixelY = ball.y / paddleScale;
+        const xOffsetForY = calculatePaddleOffsetForY(paddleShape, predictedPixelY, paddleScale);
+
         return {
             targetX: idealTargetX,
-            targetY: ball.y - paddleShape.centerY * paddleScale,
+            targetY: ball.y - xOffsetForY,
             strategy: 'loop_around',
             urgency: 1.0
         };
@@ -363,24 +409,19 @@ function checkLoopAroundOpportunity(ball, paddle, paddleShape, paddleScale) {
 function optimizeContactPoint(prediction, paddleShape, paddleScale, strategy) {
     if (!prediction) return { offsetY: 0 };
 
-    // Find optimal contact point based on strategy and paddle geometry
     let targetPixelY = paddleShape.centerY;
 
     if (strategy.includes('smash_down')) {
-        // Use top of paddle
         targetPixelY = paddleShape.topY + 1;
     } else if (strategy.includes('smash_up')) {
-        // Use bottom of paddle
         targetPixelY = paddleShape.bottomY - 1;
     } else if (strategy.includes('counter_spin')) {
-        // Use edges for maximum spin
         if (prediction.finalVy > 0) {
             targetPixelY = paddleShape.bottomY;
         } else {
             targetPixelY = paddleShape.topY;
         }
     } else if (strategy === 'aim_corner') {
-        // Use off-center contact for angles
         if (prediction.y < 250) {
             targetPixelY = paddleShape.centerY + 2;
         } else {
@@ -388,8 +429,11 @@ function optimizeContactPoint(prediction, paddleShape, paddleScale, strategy) {
         }
     }
 
+    // Calculate offset considering width at target Y
+    const xOffsetForY = calculatePaddleOffsetForY(paddleShape, targetPixelY, paddleScale);
+
     return {
-        offsetY: (targetPixelY - paddleShape.centerY) * paddleScale
+        offsetY: xOffsetForY - paddleShape.centerX * paddleScale
     };
 }
 
@@ -407,7 +451,7 @@ export function calculateAIMovement(ball, paddle, aiState, difficulty, paddleSiz
         aiState.strategy = loopOpportunity.strategy;
         aiState.urgency = loopOpportunity.urgency;
     }
-    // Priority 2: Chase opportunity
+    // Priority 2: Chase opportunity (NOW CATCHES SLOW BALLS IN ZONE!)
     else {
         const chaseOpportunity = checkChaseOpportunity(ball, paddle, paddleShape, paddleScale);
         if (chaseOpportunity) {
@@ -415,11 +459,10 @@ export function calculateAIMovement(ball, paddle, aiState, difficulty, paddleSiz
             aiState.strategy = chaseOpportunity.strategy;
             aiState.urgency = chaseOpportunity.urgency;
         }
-        // Priority 3: Standard interception with strategic positioning
+        // Priority 3: Standard interception
         else {
             const strategy = calculateInterceptionStrategy(ball, paddle, paddleShape, paddleScale);
 
-            // Apply contact point optimization
             const contactOptimization = optimizeContactPoint(
                 strategy.prediction,
                 paddleShape,
@@ -451,11 +494,10 @@ export function calculateAIMovement(ball, paddle, aiState, difficulty, paddleSiz
         return { vx: 0, vy: 0 };
     }
 
-    // Move toward target with full speed
+    // Move toward target with urgency-based speed
     const dirX = dx / distance;
     const dirY = dy / distance;
 
-    // Apply urgency-based speed modulation for fine positioning
     const speedMultiplier = aiState.urgency > 0.9 ? 1.0 :
         aiState.urgency > 0.7 ? 0.95 :
             aiState.urgency > 0.5 ? 0.9 : 0.85;
