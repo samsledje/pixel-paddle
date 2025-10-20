@@ -71,6 +71,44 @@ document.addEventListener('DOMContentLoaded', () => {
 	const gameRestartBtn = document.getElementById('gameRestartBtn');
 	if (gameReturnBtn) gameReturnBtn.addEventListener('click', returnToSetup);
 	if (gameRestartBtn) gameRestartBtn.addEventListener('click', restartGame);
+
+	// Event listeners
+	document.addEventListener('keydown', (e) => {
+		gameData.keys[e.code] = true;
+		if (e.code === 'Escape') {
+			const menu = document.getElementById('pauseMenu');
+			if (menu && !menu.classList.contains('hidden')) {
+				hideMenuOverlay();
+			} else {
+				showMenuOverlay();
+			}
+		}
+		// Prevent arrow keys from scrolling the page
+		if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
+			e.preventDefault();
+		}
+	});
+
+	document.addEventListener('keyup', (e) => {
+		gameData.keys[e.code] = false;
+	});
+
+	// Settings event listeners
+	document.getElementById('ballSpeed').addEventListener('input', updateSettings);
+	document.getElementById('paddleScale').addEventListener('input', updateSettings);
+	document.getElementById('winScore').addEventListener('input', updateSettings);
+	document.getElementById('speedIncrease').addEventListener('change', updateSettings);
+	document.getElementById('aiDifficulty').addEventListener('input', updateSettings);
+
+	// Add direct color update events for more responsive logo updates
+	document.getElementById('player1Color').addEventListener('input', function () {
+		gameSettings.player1Color = this.value;
+		updateGridDisplay(); // This updates the CSS variables
+	});
+	document.getElementById('player2Color').addEventListener('input', function () {
+		gameSettings.player2Color = this.value;
+		updateGridDisplay(); // This updates the CSS variables
+	});
 });
 // Toast notification utility
 function showToast(message, duration = 2500) {
@@ -95,7 +133,7 @@ let twoPlayerMode = false;
 let paddleData1 = [];
 let paddleData2 = [];
 let gameSettings = {
-	ballSpeed: 2,
+	ballSpeed: 4,
 	paddleScale: 5, // 5 is now the default (1x)
 	winScore: 7,
 	speedIncrease: true,
@@ -117,8 +155,8 @@ let gameData = {
 	paddleSpeed: 4,
 	speedMultiplier: 1,
 	rallies: 0,
-	aiState: { 
-		target: { x: 650, y: 200 }, 
+	aiState: {
+		target: { x: 650, y: 200 },
 		lastBallX: 0,
 		aggressiveness: 0.5,
 		timeSinceLastMove: 0
@@ -214,26 +252,26 @@ function updateGridDisplay() {
 	// Update CSS custom properties for colors
 	document.documentElement.style.setProperty('--player1-color', gameSettings.player1Color);
 	document.documentElement.style.setProperty('--player2-color', gameSettings.player2Color);
-	
+
 	const pixels1 = document.querySelectorAll('#paddleGrid1 .pixel');
 	const pixels2 = document.querySelectorAll('#paddleGrid2 .pixel');
-	
+
 	pixels1.forEach(pixel => {
 		const x = parseInt(pixel.dataset.x);
 		const y = parseInt(pixel.dataset.y);
 		pixel.classList.toggle('active', paddleData1[y][x]);
 	});
-	
+
 	pixels2.forEach(pixel => {
 		const x = parseInt(pixel.dataset.x);
 		const y = parseInt(pixel.dataset.y);
 		pixel.classList.toggle('active', paddleData2[y][x]);
 	});
-	
+
 	// Update SVG previews
 	updatePaddlePreview(1, paddleData1);
 	updatePaddlePreview(2, paddleData2);
-	
+
 	// Update the logo with the custom paddle designs
 	updateLogoWithPaddleDesigns();
 }
@@ -246,10 +284,10 @@ function updateGridDisplay() {
 function updatePaddlePreview(playerNum, paddleData) {
 	const svg = document.getElementById(`paddlePreview${playerNum}`);
 	const playerColor = playerNum === 1 ? gameSettings.player1Color : gameSettings.player2Color;
-	
+
 	// Clear existing content
 	svg.innerHTML = '';
-	
+
 	// Add background grid
 	for (let y = 0; y < 16; y++) {
 		for (let x = 0; x < 16; x++) {
@@ -264,7 +302,7 @@ function updatePaddlePreview(playerNum, paddleData) {
 			svg.appendChild(gridRect);
 		}
 	}
-	
+
 	// Add active pixels
 	for (let y = 0; y < 16; y++) {
 		for (let x = 0; x < 16; x++) {
@@ -291,20 +329,20 @@ function updateLogoWithPaddleDesigns() {
 	const logoSvg = document.querySelector('.game-logo');
 	const player1Group = logoSvg.querySelector('.player1-elements');
 	const player2Group = logoSvg.querySelector('.player2-elements');
-	
+
 	// Clear existing paddle elements
 	while (player1Group.firstChild) {
 		player1Group.removeChild(player1Group.firstChild);
 	}
-	
+
 	while (player2Group.firstChild) {
 		player2Group.removeChild(player2Group.firstChild);
 	}
-	
+
 	// Scale factor for converting 16x16 grid to logo size
 	const pixelSize = 5;
 	const gridCenter = 7.5; // Center point of the 16x16 grid (halfway between 0-15)
-	
+
 	// Add Player 1 paddle (left side)
 	for (let y = 0; y < 16; y++) {
 		for (let x = 0; x < 16; x++) {
@@ -312,9 +350,9 @@ function updateLogoWithPaddleDesigns() {
 				const pixelRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
 				// Calculate position, centering the paddle in the available space
 				// Map from 16x16 grid to logo space, offsetting to center
-				const xPos = x * pixelSize - (gridCenter * pixelSize - 30/2);
+				const xPos = x * pixelSize - (gridCenter * pixelSize - 30 / 2);
 				const yPos = (y - gridCenter) * pixelSize;
-				
+
 				pixelRect.setAttribute('x', xPos);
 				pixelRect.setAttribute('y', yPos);
 				pixelRect.setAttribute('width', pixelSize);
@@ -324,7 +362,7 @@ function updateLogoWithPaddleDesigns() {
 			}
 		}
 	}
-	
+
 	// Add Player 2 paddle (right side)
 	for (let y = 0; y < 16; y++) {
 		for (let x = 0; x < 16; x++) {
@@ -332,9 +370,9 @@ function updateLogoWithPaddleDesigns() {
 				const pixelRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
 				// Calculate position, centering the paddle in the available space
 				// For player 2, we need to flip the x-coordinate
-				const xPos = (15-x) * pixelSize - (gridCenter * pixelSize - 30/2);
+				const xPos = (15 - x) * pixelSize - (gridCenter * pixelSize - 30 / 2);
 				const yPos = (y - gridCenter) * pixelSize;
-				
+
 				pixelRect.setAttribute('x', xPos);
 				pixelRect.setAttribute('y', yPos);
 				pixelRect.setAttribute('width', pixelSize);
@@ -542,7 +580,9 @@ function resetGame() {
 	});
 
 	// Reset game state
-	const baseSpeed = gameSettings.ballSpeed;
+	// Always use the latest ball speed from gameSettings
+	const baseSpeed = parseFloat(document.getElementById('ballSpeed').value);
+	gameSettings.ballSpeed = baseSpeed;
 	gameData.player1 = { x: 50, y: 200, vx: 0, vy: 0, score: 0 };
 	gameData.player2 = { x: 650, y: 200, vx: 0, vy: 0, score: 0 };
 	gameData.speedMultiplier = 1;
@@ -573,29 +613,30 @@ function resetScores() {
 }
 
 function updateScoreDisplay() {
-    document.getElementById('score1').textContent = gameData.player1.score;
-    document.getElementById('score2').textContent = gameData.player2.score;
+	document.getElementById('score1').textContent = gameData.player1.score;
+	document.getElementById('score2').textContent = gameData.player2.score;
 }
 
 function updateModeDisplay() {
-    const modeIcon = document.getElementById('gameModeIcon');
-    const modeText = document.getElementById('gameModeText');
-    if (!modeIcon || !modeText) return;
-    if (twoPlayerMode) {
-        modeIcon.className = 'mode-icon two-player';
-        modeText.textContent = '2 Player Mode';
-        document.getElementById('scorebugName1').textContent = 'P1';
-        document.getElementById('scorebugName2').textContent = 'P2';
-    } else {
-        modeIcon.className = 'mode-icon one-player';
-        modeText.textContent = '1 Player vs AI';
-        document.getElementById('scorebugName1').textContent = 'You';
-        document.getElementById('scorebugName2').textContent = 'AI';
-    }
+	const modeIcon = document.getElementById('gameModeIcon');
+	const modeText = document.getElementById('gameModeText');
+	if (!modeIcon || !modeText) return;
+	if (twoPlayerMode) {
+		modeIcon.className = 'mode-icon two-player';
+		modeText.textContent = '2 Player Mode';
+		document.getElementById('scorebugName1').textContent = 'P1';
+		document.getElementById('scorebugName2').textContent = 'P2';
+	} else {
+		modeIcon.className = 'mode-icon one-player';
+		modeText.textContent = '1 Player vs AI';
+		document.getElementById('scorebugName1').textContent = 'You';
+		document.getElementById('scorebugName2').textContent = 'AI';
+	}
 }
 
 function updateSpeedDisplay() {
-	const currentSpeed = gameData.ball.baseSpeed * gameData.speedMultiplier;
+	// Use the actual ball speed from gameSettings
+	const currentSpeed = gameSettings.ballSpeed * gameData.speedMultiplier;
 	document.getElementById('currentSpeed').textContent = currentSpeed.toFixed(1);
 }
 
@@ -608,7 +649,7 @@ function handleInput() {
 	if (gameData.keys['KeyS']) gameData.player1.vy = speed;
 	if (gameData.keys['KeyA']) gameData.player1.vx = -speed;
 	if (gameData.keys['KeyD']) gameData.player1.vx = speed;
-	
+
 	// Player 2 (IJKL keys or AI)
 	if (twoPlayerMode) {
 		gameData.player2.vx = 0;
@@ -625,9 +666,9 @@ function handleInput() {
 			gameData.aiState,
 			gameSettings.aiDifficulty,
 			16 * gameSettings.paddleScale,
-			speed
+			speed,
+			paddleData2 // Pass paddle shape to AI
 		);
-		
 		// Apply AI calculated movement
 		gameData.player2.vx = aiMovement.vx;
 		gameData.player2.vy = aiMovement.vy;
@@ -765,7 +806,7 @@ function updatePaddles() {
 		}
 		if (validMove2y) gameData.player2.y = tryY2y;
 	}
-	
+
 	// Update Matter.js paddle body positions and velocities
 	let bodyIndex1 = 0;
 	for (let py = 0; py < 16; py++) {
@@ -838,56 +879,56 @@ function updateBall() {
 			resetBallAndPaddles();
 		}
 	}
-// Only called after a score
-function resetBallAndPaddles() {
-	// Reset ball position and velocity
-	Body.setPosition(ballBody, { x: 450, y: 250 });
-	let baseSpeed = gameSettings.ballSpeed;
-	let vx = Math.random() > 0.5 ? baseSpeed : -baseSpeed;
-	let vy = (Math.random() - 0.5) * baseSpeed;
-	Body.setVelocity(ballBody, { x: vx, y: vy });
-	// Reset player positions
-	gameData.player1.x = 50;
-	gameData.player1.y = 200;
-	gameData.player2.x = 650;
-	gameData.player2.y = 200;
-	// Also update paddle bodies
-	let bodyIndex1 = 0;
-	for (let py = 0; py < 16; py++) {
-		for (let px = 0; px < 16; px++) {
-			if (paddleData1[py][px]) {
-				const x = gameData.player1.x + px * gameSettings.paddleScale + gameSettings.paddleScale / 2;
-				const y = gameData.player1.y + py * gameSettings.paddleScale + gameSettings.paddleScale / 2;
-				Body.setPosition(player1Bodies[bodyIndex1], { x, y });
-				Body.setVelocity(player1Bodies[bodyIndex1], { x: 0, y: 0 });
-				bodyIndex1++;
+	// Only called after a score
+	function resetBallAndPaddles() {
+		// Reset ball position and velocity
+		Body.setPosition(ballBody, { x: 450, y: 250 });
+		let baseSpeed = gameSettings.ballSpeed;
+		let vx = Math.random() > 0.5 ? baseSpeed : -baseSpeed;
+		let vy = (Math.random() - 0.5) * baseSpeed;
+		Body.setVelocity(ballBody, { x: vx, y: vy });
+		// Reset player positions
+		gameData.player1.x = 50;
+		gameData.player1.y = 200;
+		gameData.player2.x = 650;
+		gameData.player2.y = 200;
+		// Also update paddle bodies
+		let bodyIndex1 = 0;
+		for (let py = 0; py < 16; py++) {
+			for (let px = 0; px < 16; px++) {
+				if (paddleData1[py][px]) {
+					const x = gameData.player1.x + px * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+					const y = gameData.player1.y + py * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+					Body.setPosition(player1Bodies[bodyIndex1], { x, y });
+					Body.setVelocity(player1Bodies[bodyIndex1], { x: 0, y: 0 });
+					bodyIndex1++;
+				}
 			}
 		}
-	}
-	let bodyIndex2 = 0;
-	for (let py = 0; py < 16; py++) {
-		for (let px = 0; px < 16; px++) {
-			if (paddleData2[py][px]) {
-				const x = gameData.player2.x + px * gameSettings.paddleScale + gameSettings.paddleScale / 2;
-				const y = gameData.player2.y + py * gameSettings.paddleScale + gameSettings.paddleScale / 2;
-				Body.setPosition(player2Bodies[bodyIndex2], { x, y });
-				Body.setVelocity(player2Bodies[bodyIndex2], { x: 0, y: 0 });
-				bodyIndex2++;
+		let bodyIndex2 = 0;
+		for (let py = 0; py < 16; py++) {
+			for (let px = 0; px < 16; px++) {
+				if (paddleData2[py][px]) {
+					const x = gameData.player2.x + px * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+					const y = gameData.player2.y + py * gameSettings.paddleScale + gameSettings.paddleScale / 2;
+					Body.setPosition(player2Bodies[bodyIndex2], { x, y });
+					Body.setVelocity(player2Bodies[bodyIndex2], { x: 0, y: 0 });
+					bodyIndex2++;
+				}
 			}
 		}
+		// Reset other game state
+		gameData.speedMultiplier = 1;
+		gameData.rallies = 0;
+		gameData.aiState = {
+			target: { x: 650, y: 200 },
+			lastBallX: 0,
+			aggressiveness: 0.5,
+			timeSinceLastMove: 0
+		};
+		updateSpeedDisplay();
+		updateModeDisplay();
 	}
-	// Reset other game state
-	gameData.speedMultiplier = 1;
-	gameData.rallies = 0;
-	gameData.aiState = {
-		target: { x: 650, y: 200 },
-		lastBallX: 0,
-		aggressiveness: 0.5,
-		timeSinceLastMove: 0
-	};
-	updateSpeedDisplay();
-	updateModeDisplay();
-}
 }
 
 function checkGameEnd() {
@@ -895,7 +936,7 @@ function checkGameEnd() {
 		gameState = 'gameOver';
 		const winner = gameData.player1.score >= gameSettings.winScore ? 'Player 1' : 'Player 2';
 		document.getElementById('winnerText').textContent = `${winner} Wins!`;
-		document.getElementById('finalScore').textContent = 
+		document.getElementById('finalScore').textContent =
 			`${gameData.player1.score} - ${gameData.player2.score}`;
 		document.getElementById('gameOver').classList.remove('hidden');
 		return true;
@@ -911,9 +952,9 @@ function drawPaddle(ctx, player, paddleData) {
 		for (let x = 0; x < 16; x++) {
 			if (paddleData[y][x]) {
 				ctx.fillRect(
-					paddle.x + x * scale, 
-					paddle.y + y * scale, 
-					scale, 
+					paddle.x + x * scale,
+					paddle.y + y * scale,
+					scale,
 					scale
 				);
 			}
@@ -945,7 +986,7 @@ function render() {
 	drawPaddle(ctx, 'player2', paddleData2);
 	ctx.fillStyle = '#fff';
 	ctx.beginPath();
-	ctx.arc(ballBody.position.x, ballBody.position.y, gameData.ball.size/2, 0, 2 * Math.PI);
+	ctx.arc(ballBody.position.x, ballBody.position.y, gameData.ball.size / 2, 0, 2 * Math.PI);
 	ctx.fill();
 }
 
@@ -982,41 +1023,4 @@ function restartGame() {
 	requestAnimationFrame(gameLoop);
 }
 
-// Event listeners
-document.addEventListener('keydown', (e) => {
-	gameData.keys[e.code] = true;
-	if (e.code === 'Escape') {
-		const menu = document.getElementById('pauseMenu');
-		if (menu && !menu.classList.contains('hidden')) {
-			hideMenuOverlay();
-		} else {
-			showMenuOverlay();
-		}
-	}
-	// Prevent arrow keys from scrolling the page
-	if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
-		e.preventDefault();
-	}
-});
 
-
-document.addEventListener('keyup', (e) => {
-	gameData.keys[e.code] = false;
-});
-
-// Settings event listeners
-document.getElementById('ballSpeed').addEventListener('input', updateSettings);
-document.getElementById('paddleScale').addEventListener('input', updateSettings);
-document.getElementById('winScore').addEventListener('input', updateSettings);
-document.getElementById('speedIncrease').addEventListener('change', updateSettings);
-document.getElementById('aiDifficulty').addEventListener('input', updateSettings);
-
-// Add direct color update events for more responsive logo updates
-document.getElementById('player1Color').addEventListener('input', function() {
-    gameSettings.player1Color = this.value;
-    updateGridDisplay(); // This updates the CSS variables
-});
-document.getElementById('player2Color').addEventListener('input', function() {
-    gameSettings.player2Color = this.value;
-    updateGridDisplay(); // This updates the CSS variables
-});

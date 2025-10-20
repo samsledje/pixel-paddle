@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,9 +9,12 @@
     <link rel="stylesheet" href="css/toast.css">
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <!-- Font Awesome for footer icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"
+        integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA=="
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
     <link rel="icon" href="img/favicon.png" type="image/png">
 </head>
+
 <body>
     <div id="toast" class="toast"></div>
     <div class="game-logo-container">
@@ -18,43 +22,47 @@
         <svg width="400" height="200" viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg" class="game-logo">
             <!-- Background -->
             <rect x="0" y="0" width="400" height="200" rx="20" ry="20" fill="#1a1a2e" />
-            
+
             <!-- Pixel Grid Paddle Left - Will be populated dynamically -->
             <g transform="translate(50, 75)" class="player1-elements">
                 <!-- Paddle elements will be added here by JavaScript -->
             </g>
-            
+
             <!-- Pixel Grid Paddle Right - Will be populated dynamically -->
             <g transform="translate(310, 75)" class="player2-elements">
                 <!-- Paddle elements will be added here by JavaScript -->
             </g>
-            
+
             <!-- Ball -->
             <circle cx="200" cy="100" r="12" fill="white" />
-            
+
             <!-- Text "PIXEL" -->
-            <text x="110" y="85" font-family="'Press Start 2P', monospace" font-size="32" fill="var(--player1-color, #00ffff)" text-anchor="start">PIXEL</text>
-            
+            <text x="110" y="85" font-family="'Press Start 2P', monospace" font-size="32"
+                fill="var(--player1-color, #00ffff)" text-anchor="start">PIXEL</text>
+
             <!-- Text "PADDLE" -->
-            <text x="290" y="125" font-family="'Press Start 2P', monospace" font-size="32" fill="var(--player2-color, #ff00ff)" text-anchor="end">PADDLE</text>
-            
+            <text x="290" y="125" font-family="'Press Start 2P', monospace" font-size="32"
+                fill="var(--player2-color, #ff00ff)" text-anchor="end">PADDLE</text>
+
             <!-- Center Line -->
             <line x1="200" y1="20" x2="200" y2="180" stroke="#444" stroke-width="4" stroke-dasharray="8 8" />
         </svg>
     </div>
-    
+
     <div id="setupScreen" class="setup-screen">
         <div class="instructions">
             <p><strong>Design Your Paddles!</strong></p>
-            <p>Click on grid squares to toggle individual pixels, or <strong>click and drag</strong> to draw/erase multiple pixels at once. Different shapes affect ball physics!</p>
+            <p>Click on grid squares to toggle individual pixels, or <strong>click and drag</strong> to draw/erase
+                multiple pixels at once. Different shapes affect ball physics!</p>
         </div>
-        
+
         <div class="paddle-editors">
             <div class="paddle-editor">
                 <div class="player-title">Player 1 Paddle</div>
                 <div id="paddleGrid1" class="grid"></div>
                 <div class="paddle-preview-container">
-                    <svg id="paddlePreview1" width="80" height="80" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" class="paddle-preview"></svg>
+                    <svg id="paddlePreview1" width="80" height="80" viewBox="0 0 16 16"
+                        xmlns="http://www.w3.org/2000/svg" class="paddle-preview"></svg>
                 </div>
                 <div class="preset-buttons">
                     <button data-preset="rectangle" data-player="1">Rectangle</button>
@@ -64,12 +72,13 @@
                     <button data-action="clear" data-player="1">Clear</button>
                 </div>
             </div>
-            
+
             <div class="paddle-editor player2">
                 <div class="player-title">Player 2 Paddle</div>
                 <div id="paddleGrid2" class="grid"></div>
                 <div class="paddle-preview-container">
-                    <svg id="paddlePreview2" width="80" height="80" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" class="paddle-preview"></svg>
+                    <svg id="paddlePreview2" width="80" height="80" viewBox="0 0 16 16"
+                        xmlns="http://www.w3.org/2000/svg" class="paddle-preview"></svg>
                 </div>
                 <div class="preset-buttons">
                     <button data-preset="rectangle" data-player="2">Rectangle</button>
@@ -80,7 +89,7 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="settings-panel">
             <div class="settings-header" id="settingsHeader">
                 <span><strong>⚙️ Game Settings</strong></span>
@@ -90,12 +99,13 @@
                 <div class="settings">
                     <div class="setting-group">
                         <label>Ball Speed</label>
-                        <input type="range" id="ballSpeed" min="1" max="5" value="2" step="0.5" title="Ball Speed">
-                        <span id="ballSpeedValue">2</span>
+                        <input type="range" id="ballSpeed" min="2" max="6" value="4" step="0.5" title="Ball Speed">
+                        <span id="ballSpeedValue">4</span>
                     </div>
                     <div class="setting-group">
                         <label>Paddle Scale</label>
-                        <input type="range" id="paddleScale" min="0.5" max="3" value="1" step="0.5" title="Paddle Scale">
+                        <input type="range" id="paddleScale" min="0.5" max="3" value="1" step="0.5"
+                            title="Paddle Scale">
                         <span id="paddleScaleValue">1x</span>
                     </div>
                     <div class="setting-group">
@@ -114,25 +124,28 @@
                     </div>
                     <div class="setting-group">
                         <label>Player 1 Color</label>
-                        <input type="color" id="player1Color" value="#00ffff" class="color-picker" title="Player 1 Color">
+                        <input type="color" id="player1Color" value="#00ffff" class="color-picker"
+                            title="Player 1 Color">
                     </div>
                     <div class="setting-group">
                         <label>Player 2 Color</label>
-                        <input type="color" id="player2Color" value="#ff00ff" class="color-picker" title="Player 2 Color">
+                        <input type="color" id="player2Color" value="#ff00ff" class="color-picker"
+                            title="Player 2 Color">
                     </div>
                 </div>
             </div>
         </div>
-        
+
         <div class="controls">
             <button id="start1Btn">Start 1 Player (vs AI)</button>
             <button id="start2Btn">Start 2 Player</button>
         </div>
-        
+
         <div class="instructions">
             <p><strong>Controls:</strong></p>
             <p>Player 1: WASD keys | Player 2: IJKL keys</p>
-            <p>Paddles move in 2D within their boundary areas. The ball responds to the shape and angle of your paddle!</p>
+            <p>Paddles move in 2D within their boundary areas. The ball responds to the shape and angle of your paddle!
+            </p>
         </div>
     </div>
 
@@ -155,7 +168,7 @@
         <div class="game-lower-info">
             <span id="gameModeIcon" class="mode-icon" title="Game Mode"></span>
             <span id="gameModeText">1 Player vs AI</span>
-            <span class="ball-speed">Ball Speed: <span id="currentSpeed">2.0</span></span>
+            <span class="ball-speed">Ball Speed: <span id="currentSpeed">4.0</span></span>
             <span class="help-text">Press <kbd>ESC</kbd> to return</span>
         </div>
         <div id="gameOver" class="game-over hidden">
@@ -164,37 +177,40 @@
             <button id="gameReturnBtn">Back to Setup</button>
             <button id="gameRestartBtn">Play Again</button>
         </div>
-                <div id="pauseMenu" class="pause-menu hidden">
-                    <h2>Game Paused</h2>
-                    <button id="resumeBtn">Resume (ESC)</button>
-                    <button id="returnBtn">Return to Main Menu</button>
-                </div>
+        <div id="pauseMenu" class="pause-menu hidden">
+            <h2>Game Paused</h2>
+            <button id="resumeBtn">Resume (ESC)</button>
+            <button id="returnBtn">Return to Main Menu</button>
+        </div>
     </div>
 
-        <footer class="footer-small">
-            <div class="footer-links">
-                <a href="https://github.com/samsledje/pixel-paddle" target="_blank" rel="noopener noreferrer" title="View on GitHub">
-                    <svg class="footer-icon" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                    </svg>
-                </a>
-                <!-- <span class="footer-sep">|</span>
+    <footer class="footer-small">
+        <div class="footer-links">
+            <a href="https://github.com/samsledje/pixel-paddle" target="_blank" rel="noopener noreferrer"
+                title="View on GitHub">
+                <svg class="footer-icon" fill="currentColor" viewBox="0 0 24 24">
+                    <path
+                        d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                </svg>
+            </a>
+            <!-- <span class="footer-sep">|</span>
                 <a href="./privacy-policy.html" target="_blank" rel="noopener noreferrer" title="Privacy Policy">
                     <svg class="footer-icon" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1M12,7C13.4,7 14.8,8.6 14.8,10V11.5C15.4,11.5 16,12.4 16,13V16C16,17.4 15.4,18 14.8,18H9.2C8.6,18 8,17.4 8,16V13C8,12.4 8.6,11.5 9.2,11.5V10C9.2,8.6 10.6,7 12,7M12,8.2C11.2,8.2 10.5,8.7 10.5,10V11.5H13.5V10C13.5,8.7 12.8,8.2 12,8.2Z"/>
                     </svg>
                 </a> -->
-                <span class="footer-sep">|</span>
-                <a href="https://samsl.io" target="_blank" rel="noopener noreferrer" title="Visit samsl.io">
-                    <svg class="footer-icon" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                    </svg>
-                </a>
-            </div>
-        </footer>
+            <span class="footer-sep">|</span>
+            <a href="https://samsl.io" target="_blank" rel="noopener noreferrer" title="Visit samsl.io">
+                <svg class="footer-icon" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                </svg>
+            </a>
+        </div>
+    </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
     <script type="module" src="js/game.js"></script>
 
 </body>
+
 </html>
